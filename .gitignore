@@ -1,0 +1,5 @@
+/target
+/testdata/*
+!/testdata/muestra/
+*.seed
+/.vscode

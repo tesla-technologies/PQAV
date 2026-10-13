@@ -1,0 +1,10 @@
+2026-10-13
+rustc 1.99.0 (b940084d7 2026-09-28)
+cargo 1.99.0 (5f94df478 2026-08-27)
+ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers
+tsp: TSDuck - The MPEG Transport Stream Toolkit - version 3.45-4798
+Python 3.12.3
+Model name:                           AMD Ryzen 5 7520U with Radeon Graphics
+8
+Mem:           7.4Gi       500Mi       6.3Gi       3.5Mi       734Mi       6.9Gi
+Linux 6.6.87.2-microsoft-standard-WSL2
