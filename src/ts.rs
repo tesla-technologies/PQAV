@@ -300,4 +300,174 @@ mod tests {
         p[0] = 0x46;
         assert_eq!(parse_packet(&p), Err(TsError::SinSincronia));
     }
+
+    #[test]
+    fn u2_pts_ida_y_vuelta() {
+        for x in [0u64, 123_456_789, (1u64 << 33) - 1] {
+            assert_eq!(decode_pts(&encode_pts(x, 0b0010)), x);
+        }
+        assert_eq!(encode_pts(126_000, 0b0010), [0x21, 0x00, 0x07, 0xD8, 0x61]);
+        assert_eq!(encode_pts(126_000, 0b0011), [0x31, 0x00, 0x07, 0xD8, 0x61]);
+        assert_eq!(encode_pts(118_800, 0b0001), [0x11, 0x00, 0x07, 0xA0, 0x21]);
+    }
+
+    #[test]
+    fn m2_pes_de_ejemplo() {
+        // cabecera PES del primer frame (documento 01, apartado 4.4) seguida de una AUD
+        let mut datos = vec![
+            0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0xC0, 0x0A, 0x31, 0x00, 0x07, 0xD8, 0x61, 0x11,
+            0x00, 0x07, 0xA0, 0x21,
+        ];
+        datos.extend_from_slice(&[0x00, 0x00, 0x00, 0x01, 0x09, 0xF0]);
+        let pes = parse_pes(&RawPes { data: datos, first_packet: 7 }).unwrap();
+        assert_eq!(pes.stream_id, 0xE0);
+        assert_eq!(pes.pts, Some(126_000));
+        assert_eq!(pes.payload, vec![0x00, 0x00, 0x00, 0x01, 0x09, 0xF0]);
+        assert_eq!(pes.first_packet, 7);
+        let corto = RawPes { data: vec![0x00, 0x00, 0x01, 0xE0, 0x00], first_packet: 0 };
+        assert_eq!(parse_pes(&corto), Err(TsError::PesCorto));
+    }
+
+    #[test]
+    fn u3_pts_dif_con_vuelta() {
+        let m = 1u64 << 33;
+        assert_eq!(pts_dif(5, m - 5), 10);
+        assert_eq!(pts_dif(m - 5, 5), -10);
+        assert_eq!(pts_dif(129_600, 126_000), 3_600);
+        assert_eq!(pts_dif(126_000, 129_600), -3_600);
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawPes {
+    pub data: Vec<u8>,     // las cargas juntas, desde 00 00 01
+    pub first_packet: u64, // número del paquete (desde 0) donde empezó
+}
+
+#[derive(Debug, Default)]
+pub struct PesAssembler {
+    buf: Vec<u8>,
+    open: bool,
+    first: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pes {
+    pub stream_id: u8,
+    pub pts: Option<u64>,
+    pub payload: Vec<u8>, // lo que va después de la cabecera PES
+    pub first_packet: u64,
+}
+
+impl PesAssembler {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn push(&mut self, pkt: &Packet, index: u64) -> Option<RawPes> {
+        if pkt.pusi {
+            let prev = if self.open {
+                Some(RawPes {
+                    data: std::mem::take(&mut self.buf),
+                    first_packet: self.first,
+                })
+            } else {
+                None
+            };
+            self.buf.clear();
+            self.buf.extend_from_slice(pkt.payload);
+            self.open = true;
+            self.first = index;
+            prev
+        } else {
+            if self.open {
+                self.buf.extend_from_slice(pkt.payload);
+            }
+            None
+        }
+    }
+
+    pub fn finish(&mut self) -> Option<RawPes> {
+        if self.open {
+            self.open = false;
+            Some(RawPes {
+                data: std::mem::take(&mut self.buf),
+                first_packet: self.first,
+            })
+        } else {
+            None
+        }
+    }
+}
+
+pub fn parse_pes(raw: &RawPes) -> Result<Pes, TsError> {
+    let b = &raw.data;
+    if b.len() < 9 {
+        return Err(TsError::PesCorto);
+    }
+    if b[0..3] != [0x00, 0x00, 0x01] {
+        return Err(TsError::PesSinInicio);
+    }
+
+    let stream_id = b[3];
+    let longitud = ((b[4] as usize) << 8) | (b[5] as usize);
+    let flags2 = b[7];
+    let hdr_len = b[8] as usize;
+
+    if 9 + hdr_len > b.len() {
+        return Err(TsError::PesCorto);
+    }
+
+    let pts = if (flags2 & 0x80) != 0 {
+        if hdr_len < 5 {
+            return Err(TsError::PesCorto);
+        }
+        Some(decode_pts(&b[9..14]))
+    } else {
+        None
+    };
+
+    let inicio_datos = 9 + hdr_len;
+    let fin_datos = if longitud == 0 {
+        b.len()
+    } else {
+        std::cmp::min(6 + longitud, b.len())
+    };
+
+    if fin_datos < inicio_datos {
+        return Err(TsError::PesCorto);
+    }
+
+    let payload = b[inicio_datos..fin_datos].to_vec();
+
+    Ok(Pes {
+        stream_id,
+        pts,
+        payload,
+        first_packet: raw.first_packet,
+    })
+}
+
+pub fn encode_pts(pts: u64, prefix: u8) -> [u8; 5] {
+    let b0 = ((prefix & 0x0F) << 4) | ((((pts >> 30) & 0x07) as u8) << 1) | 1;
+    let b1 = ((pts >> 22) & 0xFF) as u8;
+    let b2 = ((((pts >> 15) & 0x7F) as u8) << 1) | 1;
+    let b3 = ((pts >> 7) & 0xFF) as u8;
+    let b4 = (((pts & 0x7F) as u8) << 1) | 1;
+
+    [b0, b1, b2, b3, b4]
+}
+
+pub fn decode_pts(b: &[u8]) -> u64 {
+    let b0 = b[0] as u64;
+    let b1 = b[1] as u64;
+    let b2 = b[2] as u64;
+    let b3 = b[3] as u64;
+    let b4 = b[4] as u64;
+
+    ((b0 >> 1) & 0x07) << 30 | (b1 << 22) | ((b2 >> 1) & 0x7F) << 15 | (b3 << 7) | ((b4 >> 1) & 0x7F)
+}
+
+pub fn pts_dif(a: u64, b: u64) -> i64 {
+    (a as i64 - b as i64 + (1i64 << 32)).rem_euclid(1i64 << 33) - (1i64 << 32)
 }
