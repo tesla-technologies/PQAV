@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use pqav::ts::{parse_packet, parse_pat, parse_pmt, parse_pes, pts_dif, PesAssembler, SectionAssembler, PAT_PID, TS};
+use pqav::ts::{
+    parse_packet, parse_pat, parse_pes, parse_pmt, pts_dif, PesAssembler, SectionAssembler,
+    PAT_PID, TS,
+};
 use std::collections::BTreeMap;
 
 #[test]
@@ -54,9 +57,14 @@ fn m2_cuenta_pes_de_entrada() {
             if let Some(s) = pmt_asm.push(&pkt) {
                 let pmt = parse_pmt(&s).unwrap();
                 for es in pmt.es {
-                    if es.stream_type == 0x1B || es.stream_type == 0x02 { // Vídeo H.264 / MPEG-2
+                    if es.stream_type == 0x1B || es.stream_type == 0x02 {
+                        // Vídeo H.264 / MPEG-2
                         video_pid = Some(es.pid);
-                    } else if es.stream_type == 0x0F || es.stream_type == 0x03 || es.stream_type == 0x04 { // Audio AAC / MP3
+                    } else if es.stream_type == 0x0F
+                        || es.stream_type == 0x03
+                        || es.stream_type == 0x04
+                    {
+                        // Audio AAC / MP3
                         audio_pid = Some(es.pid);
                     }
                 }
@@ -108,10 +116,10 @@ fn m2_cuenta_pes_de_entrada() {
         let pes = parse_pes(&raw).unwrap();
         if pid == video_pid {
             v_count += 1;
-            if pes.pts.is_none() {
-                v_sin_pts += 1;
+            if let Some(pts) = pes.pts {
+                video_pts_list.push(pts);
             } else {
-                video_pts_list.push(pes.pts.unwrap());
+                v_sin_pts += 1;
             }
         } else if pid == audio_pid {
             a_count += 1;
