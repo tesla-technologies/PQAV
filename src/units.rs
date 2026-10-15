@@ -1,1 +1,236 @@
+// src/units.rs
+use crate::ts::{pts_dif, Pmt, PTS_MOD};
+
+pub const REL_MAX: i64 = 1 << 20;
+
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum UnitsError {
+    #[error("intervalo demasiado largo (rel = {0} tics)")]
+    IntervaloDemasiadoLargo(i64),
+    #[error("intervalo vacío")]
+    IntervaloVacio,
+    #[error("tipo de flujo no admitido: 0x{stream_type:02X} en el PID 0x{pid:04X}")]
+    TipoNoAdmitido { stream_type: u8, pid: u16 },
+    #[error("la PMT no tiene un vídeo H.264")]
+    SinVideo,
+    #[error("la PMT tiene más de un vídeo o más de un audio")]
+    DemasiadosFlujos,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Unit {
+    pub comp: u8,
+    pub pts: u64,
+    pub hash: [u8; 32],
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Interval {
+    pub units: Vec<Unit>, // en el orden en que entraron
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Component {
+    pub stream_type: u8,
+    pub lang: String,
+    pub audio_type: u8,
+    pub pid: u16, // no se firma; sirve para saber a qué componente va cada PES
+}
+
+impl Interval {
+    pub fn video_count(&self, video_comp: u8) -> usize {
+	return self.units.iter().filter(|u| u.comp == video_comp).count();
+    }
+    pub fn base(&self) -> Result<u64, UnitsError>{                // IntervaloVacio si no hay unidades
+	if self.units.is_empty(){
+	    return Err(UnitsError::IntervaloVacio);
+	}
+	let p0=self.units[0].pts;
+	let m = self
+        .units
+        .iter()
+        .map(|u| pts_dif(u.pts, p0))
+        .min()
+        .unwrap_or(0);
+	let base=(p0 as i64+m).rem_euclid(PTS_MOD as i64) as u64;
+	Ok(base)
+    }
+    pub fn rel(&self, base: u64, u: &Unit) -> Result<u32, UnitsError>{
+	let r=pts_dif(u.pts,base);
+	if r<0 || r> REL_MAX{
+	    return Err(UnitsError::IntervaloDemasiadoLargo(r));
+	}
+	Ok(r as u32)
+    }
+}
+
+pub fn find_anchor_pid(pmt: &Pmt) -> Option<u16>{ // la entrada 0x06 con registro "PQAV"
+    for es in &pmt.es{
+	if es.stream_type == 0x06{
+	    for (tag,data) in &es.descriptors{
+		if *tag == 0x05 && data == b"PQAV"{
+		    return Some(es.pid);
+		}
+	    }
+	}
+    }
+    None
+}
+
+pub fn component_map(pmt: &Pmt, anchor_pid: Option<u16>) -> Result<Vec<Component>, UnitsError>{
+    let mut filtradas=Vec::new();
+    for es in &pmt.es{
+	if Some(es.pid) == anchor_pid{
+	    continue;
+	}
+	if es.stream_type == 0x06{
+	    let es_ancla = es
+                .descriptors
+                .iter()
+                .any(|(tag, data)| *tag == 0x05 && data == b"PQAV");
+            if es_ancla {
+                continue;
+            }
+	}
+	filtradas.push(es);
+    }
+
+    if filtradas.is_empty() || filtradas.len() > 2{
+	return Err(UnitsError::DemasiadosFlujos);
+    }
+
+    let mut video_entry = None;
+    let mut audio_entry = None;
+
+    for es in filtradas{
+	match es.stream_type{
+	    0x1B =>{
+		if video_entry.is_some(){
+		    return Err(UnitsError::DemasiadosFlujos);
+		}
+		video_entry=Some(es);
+	    }
+    
+	    0x0F =>{
+		if audio_entry.is_some(){
+		    return Err(UnitsError::DemasiadosFlujos);
+		}
+		audio_entry=Some(es);
+	    }
+
+	    _ => {
+		return Err(UnitsError::TipoNoAdmitido{
+		    stream_type:es.stream_type,
+		    pid:es.pid,
+		});
+	    }
+	}
+    }
+
+    let video= video_entry.ok_or(UnitsError::SinVideo)?;
+
+    let mut res= Vec::new();
+    res.push(Component{
+	stream_type:video.stream_type,
+	lang:String::new(),
+	audio_type:0,
+	pid:video.pid,
+    });
+
+    if let Some(audio)=audio_entry{
+	let mut lang=String::new();
+	for (tag,data) in &audio.descriptors{
+	    if *tag==0x0A && data.len()>=3{
+		if let Ok(s)=std::str::from_utf8(&data[..3]){
+		    lang=s.to_string();
+		}
+	    }
+	}
+	res.push(Component{
+	    stream_type:audio.stream_type,
+	    lang,
+	    audio_type:0,
+	    pid:audio.pid,
+	});
+    }
+
+   Ok(res)
+}
+
+pub fn map_tuples(comps: &[Component]) -> Vec<(u8, String, u8)>{ // lo que va en la carga
+    comps
+	.iter()
+	.map(|c| (c.stream_type, c.lang.clone(), c.audio_type))
+	.collect()
+}
+
+#[cfg(test)]
+mod tests{
+    use super::*;
+    use crate::ts::parse_pmt;
+
+    fn u(comp:u8,pts:u64) -> Unit{
+	Unit{
+	    comp,
+	    pts,
+	    hash:[0;32],
+	}
+    }
+    
+    #[test]
+    fn m4_base_y_rel_con_b_frames(){
+	let iv=Interval{
+	    units:vec![
+		u(0,133_200),
+		u(0,126_000),
+		u(0,129_600),
+		u(1,124_080),
+	    ],
+	};
+	
+	let base=iv.base().unwrap();
+	assert_eq!(base, 124_080);
+        assert_eq!(iv.rel(base, &iv.units[0]), Ok(9_120));
+        assert_eq!(iv.rel(base, &iv.units[3]), Ok(0));
+        assert_eq!(iv.video_count(0), 3);
+    }
+
+    #[test]
+    fn m4_base_con_vuelta_de_pts(){
+	let m=1u64<<33;
+	let iv=Interval{
+	    units:vec![u(0,1_800),u(0,m-1_800)],
+	};
+
+	let base=iv.base().unwrap();
+	assert_eq!(base,m-1_800);
+	assert_eq!(iv.rel(base,&iv.units[0]),Ok(3_600));
+	
+	let lejos=Interval{
+	    units:vec![u(0,0),u(0,(1<<20)+1)],
+	};
+	let b=lejos.base().unwrap();
+	assert_eq!(
+	    lejos.rel(b,&lejos.units[1]),
+	    Err(UnitsError::IntervaloDemasiadoLargo((1<<20)+1))
+	);
+    }
+
+    #[test]
+    fn m4_mapa_de_componentes() {
+        let pmt2: [u8; 43] = [
+            0x02, 0xB0, 0x28, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE1, 0x00, 0xF0, 0x00, 0x1B, 0xE1, 0x00,
+            0xF0, 0x00, 0x0F, 0xE1, 0x01, 0xF0, 0x06, 0x0A, 0x04, 0x73, 0x70, 0x61, 0x00, 0x06, 0xFF,
+            0xF0, 0xF0, 0x06, 0x05, 0x04, 0x50, 0x51, 0x41, 0x56, 0x57, 0x15, 0xF0, 0x5F,
+        ];
+        let pmt=parse_pmt(&pmt2).unwrap();
+        assert_eq!(find_anchor_pid(&pmt), Some(0x1FF0));
+        let comps=component_map(&pmt, Some(0x1FF0)).unwrap();
+        assert_eq!(
+            map_tuples(&comps),
+            vec![(27, String::new(), 0), (15, "spa".to_string(), 0)]
+        );
+        assert_eq!(comps[1].pid, 0x0101);
+    }
+}
 
