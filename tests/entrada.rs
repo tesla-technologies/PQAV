@@ -146,3 +146,98 @@ fn m2_cuenta_pes_de_entrada() {
     assert_eq!(v_count, 1500);
     assert_eq!(v_sin_pts, 0);
 }
+
+#[test]
+#[ignore = "necesita testdata/entrada.ts"]
+fn m3_unidades_de_entrada(){
+    use pqav::adts::split_adts;
+    use pqav::h264::hash_video;
+    use pqav::ts::{parse_packet, parse_pat, parse_pes, parse_pmt, PesAssembler, SectionAssembler, PAT_PID, TS};
+    use std::collections::BTreeMap;
+    
+    let datos = std::fs::read("testdata/entrada.ts").expect("falta testdata/entrada.ts");
+    let mut pat_asm = SectionAssembler::new();
+    let mut pmt_asm = SectionAssembler::new();
+    let mut pmt_pid = None;
+    let mut video_pid = None;
+    let mut audio_pid = None;    
+
+    for p in datos.chunks_exact(TS) {
+        let pkt = parse_packet(p).unwrap();
+        if pkt.pid == PAT_PID {
+            if let Some(s) = pat_asm.push(&pkt) {
+                pmt_pid = Some(parse_pat(&s).unwrap());
+            }
+        } else if Some(pkt.pid) == pmt_pid {
+            if let Some(s) = pmt_asm.push(&pkt) {
+                let pmt = parse_pmt(&s).unwrap();
+                for es in pmt.es {
+                    if es.stream_type == 0x1B {
+                        video_pid = Some(es.pid);
+                    } else if es.stream_type == 0x0F {
+                        audio_pid = Some(es.pid);
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    let video_pid = video_pid.unwrap();
+    let audio_pid = audio_pid.unwrap();
+
+    let mut video_asm = PesAssembler::new();
+    let mut audio_asm = PesAssembler::new();
+    let mut pes_list = Vec::new();
+
+    for (index, p) in datos.chunks_exact(TS).enumerate() {
+        let pkt = parse_packet(p).unwrap();
+        let idx = index as u64;
+
+        if pkt.pid == video_pid {
+            if let Some(raw) = video_asm.push(&pkt, idx) {
+                pes_list.push((video_pid, parse_pes(&raw).unwrap()));
+            }
+        } else if pkt.pid == audio_pid {
+            if let Some(raw) = audio_asm.push(&pkt, idx) {
+                pes_list.push((audio_pid, parse_pes(&raw).unwrap()));
+            }
+        }
+    }
+    if let Some(raw) = video_asm.finish() {
+        pes_list.push((video_pid, parse_pes(&raw).unwrap()));
+    }
+    if let Some(raw) = audio_asm.finish() {
+        pes_list.push((audio_pid, parse_pes(&raw).unwrap()));
+    }
+
+    let mut video_units = 0;
+    let mut audio_units = 0;
+    let mut errores = 0;
+    let mut histograma: BTreeMap<usize, usize> = BTreeMap::new();
+
+    for (pid, pes) in pes_list {
+        if pid == video_pid {
+            match hash_video(&pes.payload) {
+                Ok(_) => video_units += 1,
+                Err(_) => errores += 1,
+            }
+        } else if pid == audio_pid {
+            match split_adts(&pes.payload) {
+                Ok(tramas) => {
+                    *histograma.entry(tramas.len()).or_default() += 1;
+                    audio_units += tramas.len();
+                }
+                Err(_) => errores += 1,
+            }
+        }
+    }
+
+    println!("Vídeo: {video_units} unidades");
+    println!("Audio: {audio_units} unidades");
+    println!("Errores: {errores}");
+    println!("Histograma tramas por PES audio: {:?}", histograma);
+
+    assert_eq!(video_units, 1500);
+    assert_eq!(errores, 0);
+}
