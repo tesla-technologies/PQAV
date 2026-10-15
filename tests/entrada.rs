@@ -149,18 +149,20 @@ fn m2_cuenta_pes_de_entrada() {
 
 #[test]
 #[ignore = "necesita testdata/entrada.ts"]
-fn m3_unidades_de_entrada(){
+fn m3_unidades_de_entrada() {
     use pqav::adts::split_adts;
     use pqav::h264::hash_video;
-    use pqav::ts::{parse_packet, parse_pat, parse_pes, parse_pmt, PesAssembler, SectionAssembler, PAT_PID, TS};
+    use pqav::ts::{
+        parse_packet, parse_pat, parse_pes, parse_pmt, PesAssembler, SectionAssembler, PAT_PID, TS,
+    };
     use std::collections::BTreeMap;
-    
+
     let datos = std::fs::read("testdata/entrada.ts").expect("falta testdata/entrada.ts");
     let mut pat_asm = SectionAssembler::new();
     let mut pmt_asm = SectionAssembler::new();
     let mut pmt_pid = None;
     let mut video_pid = None;
-    let mut audio_pid = None;    
+    let mut audio_pid = None;
 
     for p in datos.chunks_exact(TS) {
         let pkt = parse_packet(p).unwrap();
@@ -242,7 +244,6 @@ fn m3_unidades_de_entrada(){
     assert_eq!(errores, 0);
 }
 
-
 #[test]
 #[ignore = "necesita testdata/entrada.ts"]
 fn m4_intervalos_de_entrada() {
@@ -279,8 +280,7 @@ fn m4_intervalos_de_entrada() {
     let comps = component_map(&pmt, None).unwrap();
     let comp_tuples = map_tuples(&comps);
 
-
-let video_pid = comps[0].pid;
+    let video_pid = comps[0].pid;
     let audio_pid = comps.get(1).map(|c| c.pid);
     let mut video_asm = PesAssembler::new();
     let mut audio_asm = PesAssembler::new();
@@ -334,11 +334,7 @@ let video_pid = comps[0].pid;
             for (k, trama) in tramas.iter().enumerate() {
                 let pts = (base_pts + 1920 * k as u64) % (1u64 << 33);
                 let hash = pqav::adts::hash_audio(trama);
-                let unit = Unit {
-                    comp: 1,
-                    pts,
-                    hash,
-                };
+                let unit = Unit { comp: 1, pts, hash };
                 abierto.units.push(unit);
             }
         }

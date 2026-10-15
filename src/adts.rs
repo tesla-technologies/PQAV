@@ -51,9 +51,8 @@ pub fn split_adts(pes_payload: &[u8]) -> Result<Vec<AdtsFrame<'_>>, AdtsError> {
         }
 
         let channels = ((b[2] & 0x01) << 2) | ((b[3] >> 6) & 0x03);
-        let frame_length = (((b[3] & 0x03) as usize) << 11)
-            | ((b[4] as usize) << 3)
-            | ((b[5] as usize) >> 5);
+        let frame_length =
+            (((b[3] & 0x03) as usize) << 11) | ((b[4] as usize) << 3) | ((b[5] as usize) >> 5);
 
         let raw_blocks = b[6] & 0x03;
         if raw_blocks != 0 {
@@ -110,7 +109,15 @@ mod tests {
         let a = trama();
         let fa = split_adts(&a).unwrap();
         assert_eq!(fa.len(), 1);
-        assert_eq!((fa[0].profile, fa[0].sf_index, fa[0].channels, fa[0].raw.len()), (1, 3, 2, 16));
+        assert_eq!(
+            (
+                fa[0].profile,
+                fa[0].sf_index,
+                fa[0].channels,
+                fa[0].raw.len()
+            ),
+            (1, 3, 2, 16)
+        );
         assert_eq!(enc_a(&fa[0])[..3], [1, 3, 2]);
         let mut b = trama();
         b[5] = (b[5] & 0xE0) | 0x04;
