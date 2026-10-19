@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 // src/anchor.rs
 use core::convert::Infallible;
 

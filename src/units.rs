@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 // src/units.rs
 use crate::ts::{pts_dif, Pmt, PTS_MOD};
 
@@ -39,7 +40,7 @@ pub struct Component {
 
 impl Interval {
     pub fn video_count(&self, video_comp: u8) -> usize {
-	self.units.iter().filter(|u| u.comp == video_comp).count()
+        self.units.iter().filter(|u| u.comp == video_comp).count()
     }
     pub fn base(&self) -> Result<u64, UnitsError> {
         // IntervaloVacio si no hay unidades
@@ -57,13 +58,12 @@ impl Interval {
         Ok(base)
     }
     pub fn rel(&self, base: u64, u: &Unit) -> Result<u32, UnitsError> {
-	let r = pts_dif(u.pts, base);
-	if !(0..=REL_MAX).contains(&r) {
-	    return Err(UnitsError::IntervaloDemasiadoLargo(r));
-	}
-	Ok(r as u32)
+        let r = pts_dif(u.pts, base);
+        if !(0..=REL_MAX).contains(&r) {
+            return Err(UnitsError::IntervaloDemasiadoLargo(r));
+        }
+        Ok(r as u32)
     }
-
 }
 
 pub fn find_anchor_pid(pmt: &Pmt) -> Option<u16> {
@@ -83,10 +83,10 @@ pub fn find_anchor_pid(pmt: &Pmt) -> Option<u16> {
 pub fn component_map(pmt: &Pmt, anchor_pid: Option<u16>) -> Result<Vec<Component>, UnitsError> {
     let mut filtradas = Vec::new();
     for es in &pmt.es {
-        if Some(es.pid) == anchor_pid {
+        if anchor_pid.is_some() && Some(es.pid) == anchor_pid {
             continue;
         }
-        if es.stream_type == 0x06 {
+        if anchor_pid.is_none() && es.stream_type == 0x06 {
             let es_ancla = es
                 .descriptors
                 .iter()
@@ -98,29 +98,24 @@ pub fn component_map(pmt: &Pmt, anchor_pid: Option<u16>) -> Result<Vec<Component
         filtradas.push(es);
     }
 
-    if filtradas.is_empty() || filtradas.len() > 2 {
-        return Err(UnitsError::DemasiadosFlujos);
-    }
-
-    let mut video_entry = None;
-    let mut audio_entry = None;
+    let mut res = Vec::new();
+    let mut tiene_video = false;
+    let mut tiene_audio = false;
 
     for es in filtradas {
         match es.stream_type {
             0x1B => {
-                if video_entry.is_some() {
+                if tiene_video {
                     return Err(UnitsError::DemasiadosFlujos);
                 }
-                video_entry = Some(es);
+                tiene_video = true;
             }
-
             0x0F => {
-                if audio_entry.is_some() {
+                if tiene_audio {
                     return Err(UnitsError::DemasiadosFlujos);
                 }
-                audio_entry = Some(es);
+                tiene_audio = true;
             }
-
             _ => {
                 return Err(UnitsError::TipoNoAdmitido {
                     stream_type: es.stream_type,
@@ -128,33 +123,32 @@ pub fn component_map(pmt: &Pmt, anchor_pid: Option<u16>) -> Result<Vec<Component
                 });
             }
         }
-    }
 
-    let video = video_entry.ok_or(UnitsError::SinVideo)?;
-
-    let mut res = Vec::new();
-    res.push(Component {
-        stream_type: video.stream_type,
-        lang: String::new(),
-        audio_type: 0,
-        pid: video.pid,
-    });
-
-    if let Some(audio) = audio_entry {
         let mut lang = String::new();
-        for (tag, data) in &audio.descriptors {
+        let mut audio_type = 0u8;
+
+        for (tag, data) in &es.descriptors {
             if *tag == 0x0A && data.len() >= 3 {
                 if let Ok(s) = std::str::from_utf8(&data[..3]) {
                     lang = s.to_string();
                 }
+                if data.len() >= 4 {
+                    audio_type = data[3];
+                }
+                break;
             }
         }
+
         res.push(Component {
-            stream_type: audio.stream_type,
+            stream_type: es.stream_type,
             lang,
-            audio_type: 0,
-            pid: audio.pid,
+            audio_type,
+            pid: es.pid,
         });
+    }
+
+    if !tiene_video {
+        return Err(UnitsError::SinVideo);
     }
 
     Ok(res)
@@ -231,5 +225,70 @@ mod tests {
             vec![(27, String::new(), 0), (15, "spa".to_string(), 0)]
         );
         assert_eq!(comps[1].pid, 0x0101);
+    }
+
+    #[test]
+    fn m4_mapa_con_audio_type_3() {
+        use crate::ts::{EsEntry, Pmt};
+
+        let pmt = Pmt {
+            pcr_pid: 0x0100,
+            version: 0,
+            es: vec![
+                EsEntry {
+                    stream_type: 0x1B, // Vídeo H.264
+                    pid: 0x0100,
+                    descriptors: vec![],
+                },
+                EsEntry {
+                    stream_type: 0x0F, // Audio AAC
+                    pid: 0x0101,
+                    descriptors: vec![
+                        // Descriptor 0x0A de idioma: "spa" + audio_type (3)
+                        (0x0A, vec![b's', b'p', b'a', 3]),
+                    ],
+                },
+            ],
+        };
+        let comps = component_map(&pmt, None).unwrap();
+        assert_eq!(
+            map_tuples(&comps),
+            vec![(27, String::new(), 0), (15, "spa".to_string(), 3)]
+        );
+    }
+
+    #[test]
+    fn m4_mapa_con_dos_descriptores_de_idioma() {
+        use crate::ts::{EsEntry, Pmt};
+
+        let pmt = Pmt {
+            pcr_pid: 0x0100,
+            version: 0,
+            es: vec![
+                EsEntry {
+                    stream_type: 0x1B, // Vídeo H.264
+                    pid: 0x0100,
+                    descriptors: vec![],
+                },
+                EsEntry {
+                    stream_type: 0x0F, // Audio AAC
+                    pid: 0x0101,
+                    descriptors: vec![
+                        // Primer descriptor: "eng"
+                        (0x0A, vec![b'e', b'n', b'g', 0]),
+                        // Segundo descriptor: "spa"
+                        (0x0A, vec![b's', b'p', b'a', 1]),
+                    ],
+                },
+            ],
+        };
+
+        let comps = component_map(&pmt, None).unwrap();
+
+        // Debe seleccionar el primer descriptor ("eng")
+        assert_eq!(
+            map_tuples(&comps),
+            vec![(27, String::new(), 0), (15, "eng".to_string(), 0)]
+        );
     }
 }
