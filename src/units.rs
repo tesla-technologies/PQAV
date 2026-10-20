@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // src/units.rs
-use crate::ts::{pts_dif, Pmt, PTS_MOD};
+use crate::adts::{hash_audio, split_adts};
+use crate::h264::hash_video;
+use crate::ts::{pts_dif, Pes, Pmt, PTS_MOD};
 
 pub const REL_MAX: i64 = 1 << 20;
 
@@ -160,6 +162,44 @@ pub fn map_tuples(comps: &[Component]) -> Vec<(u8, String, u8)> {
         .iter()
         .map(|c| (c.stream_type, c.lang.clone(), c.audio_type))
         .collect()
+}
+
+pub fn parse_pes_to_intervals(
+    raw_pes_list: &[(u16, Pes)],
+    video_pid: u16,
+    audio_pid: Option<u16>,
+) -> Result<Vec<Interval>, UnitsError> {
+    let mut intervalos = Vec::new();
+    let mut abierto = Interval::default();
+
+    for (pid, pes) in raw_pes_list {
+        if *pid == video_pid {
+            let hash = hash_video(&pes.payload).map_err(|_| UnitsError::SinVideo)?;
+            let pts = pes.pts.ok_or(UnitsError::IntervaloVacio)?;
+            let unit = Unit { comp: 0, pts, hash };
+
+            // Regla del apartado 6 del Doc 02: al intentar meter la 7.ª unidad de vídeo, se cierra el intervalo.
+            if abierto.video_count(0) == 6 {
+                intervalos.push(std::mem::take(&mut abierto));
+            }
+            abierto.units.push(unit);
+        } else if Some(*pid) == audio_pid {
+            let tramas = split_adts(&pes.payload).map_err(|_| UnitsError::IntervaloVacio)?;
+            let base_pts = pes.pts.ok_or(UnitsError::IntervaloVacio)?;
+            for (k, trama) in tramas.iter().enumerate() {
+                let pts = (base_pts + 1920 * k as u64) % PTS_MOD;
+                let hash = hash_audio(trama);
+                let unit = Unit { comp: 1, pts, hash };
+                abierto.units.push(unit);
+            }
+        }
+    }
+
+    if !abierto.units.is_empty() {
+        intervalos.push(abierto);
+    }
+
+    Ok(intervalos)
 }
 
 #[cfg(test)]
