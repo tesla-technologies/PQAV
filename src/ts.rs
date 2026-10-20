@@ -487,3 +487,69 @@ pub fn decode_pts(b: &[u8]) -> u64 {
 pub fn pts_dif(a: u64, b: u64) -> i64 {
     (a as i64 - b as i64 + (1i64 << 32)).rem_euclid(1i64 << 33) - (1i64 << 32)
 }
+
+pub fn parse_ts_to_pes(datos: &[u8]) -> Result<(Pmt, Vec<(u16, Pes)>), TsError> {
+    let mut pat_asm = SectionAssembler::new();
+    let mut pmt_asm = SectionAssembler::new();
+    let mut pmt_pid = None;
+    let mut pmt_valida = None;
+
+    for p in datos.chunks_exact(TS) {
+        let pkt = parse_packet(p)?;
+        if pkt.pid == PAT_PID {
+            if let Some(s) = pat_asm.push(&pkt) {
+                pmt_pid = Some(parse_pat(&s)?);
+            }
+        } else if Some(pkt.pid) == pmt_pid {
+            if let Some(s) = pmt_asm.push(&pkt) {
+                pmt_valida = Some(parse_pmt(&s)?);
+                break;
+            }
+        }
+    }
+
+    let pmt = pmt_valida.ok_or(TsError::SeccionMal)?;
+
+    let mut video_pid = None;
+    let mut audio_pid = None;
+    for es in &pmt.es {
+        if es.stream_type == 0x1B {
+            video_pid = Some(es.pid);
+        } else if es.stream_type == 0x0F {
+            audio_pid = Some(es.pid);
+        }
+    }
+
+    let video_pid = video_pid.ok_or(TsError::SeccionMal)?;
+
+    let mut video_asm = PesAssembler::new();
+    let mut audio_asm = PesAssembler::new();
+    let mut pes_list = Vec::new();
+
+    for (index, p) in datos.chunks_exact(TS).enumerate() {
+        let pkt = parse_packet(p)?;
+        let idx = index as u64;
+
+        if pkt.pid == video_pid {
+            if let Some(raw) = video_asm.push(&pkt, idx) {
+                pes_list.push((video_pid, parse_pes(&raw)?));
+            }
+        } else if Some(pkt.pid) == audio_pid {
+            let a_pid = audio_pid.unwrap();
+            if let Some(raw) = audio_asm.push(&pkt, idx) {
+                pes_list.push((a_pid, parse_pes(&raw)?));
+            }
+        }
+    }
+
+    if let Some(raw) = video_asm.finish() {
+        pes_list.push((video_pid, parse_pes(&raw)?));
+    }
+    if let Some(a_pid) = audio_pid {
+        if let Some(raw) = audio_asm.finish() {
+            pes_list.push((a_pid, parse_pes(&raw)?));
+        }
+    }
+
+    Ok((pmt, pes_list))
+}
