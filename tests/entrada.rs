@@ -1,75 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use pqav::ts::{
-    parse_packet, parse_pat, parse_pes, parse_pmt, pts_dif, Pes, PesAssembler, Pmt,
-    SectionAssembler, PAT_PID, TS,
+    parse_packet, parse_pat, parse_pmt, parse_ts_to_pes, pts_dif, SectionAssembler, PAT_PID, TS,
 };
 use std::collections::BTreeMap;
-
-fn parse_entrada_ts(datos: &[u8]) -> (Pmt, Vec<(u16, Pes)>) {
-    let mut pat_asm = SectionAssembler::new();
-    let mut pmt_asm = SectionAssembler::new();
-    let mut pmt_pid = None;
-    let mut pmt_valida = None;
-
-    for p in datos.chunks_exact(TS) {
-        let pkt = parse_packet(p).unwrap();
-        if pkt.pid == PAT_PID {
-            if let Some(s) = pat_asm.push(&pkt) {
-                pmt_pid = Some(parse_pat(&s).unwrap());
-            }
-        } else if Some(pkt.pid) == pmt_pid {
-            if let Some(s) = pmt_asm.push(&pkt) {
-                pmt_valida = Some(parse_pmt(&s).unwrap());
-                break;
-            }
-        }
-    }
-
-    let pmt = pmt_valida.expect("no se encontró PMT válida en los datos");
-
-    let mut video_pid = None;
-    let mut audio_pid = None;
-    for es in &pmt.es {
-        if es.stream_type == 0x1B || es.stream_type == 0x02 {
-            video_pid = Some(es.pid);
-        } else if es.stream_type == 0x0F || es.stream_type == 0x03 || es.stream_type == 0x04 {
-            audio_pid = Some(es.pid);
-        }
-    }
-
-    let video_pid = video_pid.expect("no hay stream de vídeo en la PMT");
-
-    let mut video_asm = PesAssembler::new();
-    let mut audio_asm = PesAssembler::new();
-    let mut pes_list = Vec::new();
-
-    for (index, p) in datos.chunks_exact(TS).enumerate() {
-        let pkt = parse_packet(p).unwrap();
-        let idx = index as u64;
-
-        if pkt.pid == video_pid {
-            if let Some(raw) = video_asm.push(&pkt, idx) {
-                pes_list.push((video_pid, parse_pes(&raw).unwrap()));
-            }
-        } else if Some(pkt.pid) == audio_pid {
-            let a_pid = audio_pid.unwrap();
-            if let Some(raw) = audio_asm.push(&pkt, idx) {
-                pes_list.push((a_pid, parse_pes(&raw).unwrap()));
-            }
-        }
-    }
-
-    if let Some(raw) = video_asm.finish() {
-        pes_list.push((video_pid, parse_pes(&raw).unwrap()));
-    }
-    if let Some(a_pid) = audio_pid {
-        if let Some(raw) = audio_asm.finish() {
-            pes_list.push((a_pid, parse_pes(&raw).unwrap()));
-        }
-    }
-
-    (pmt, pes_list)
-}
 
 #[test]
 #[ignore = "necesita testdata/entrada.ts"]
@@ -106,7 +39,7 @@ fn m2_cuenta_pes_de_entrada() {
     let datos = std::fs::read("testdata/entrada.ts").expect("falta testdata/entrada.ts");
     assert_eq!(datos.len() % TS, 0);
 
-    let (pmt, pes_list) = parse_entrada_ts(&datos);
+    let (pmt, pes_list) = parse_ts_to_pes(&datos).unwrap();
     let video_pid = pmt.es.iter().find(|es| es.stream_type == 0x1B).unwrap().pid;
     let audio_pid = pmt
         .es
@@ -162,7 +95,7 @@ fn m3_unidades_de_entrada() {
     use std::collections::BTreeMap;
 
     let datos = std::fs::read("testdata/entrada.ts").expect("falta testdata/entrada.ts");
-    let (pmt, pes_list) = parse_entrada_ts(&datos);
+    let (pmt, pes_list) = pqav::ts::parse_ts_to_pes(&datos).unwrap();
     let video_pid = pmt.es.iter().find(|es| es.stream_type == 0x1B).unwrap().pid;
     let audio_pid = pmt
         .es
@@ -208,7 +141,7 @@ fn m4_intervalos_de_entrada() {
     use pqav::units::{component_map, map_tuples, parse_pes_to_intervals};
 
     let datos = std::fs::read("testdata/entrada.ts").expect("falta testdata/entrada.ts");
-    let (pmt, pes_list) = parse_entrada_ts(&datos);
+    let (pmt, pes_list) = pqav::ts::parse_ts_to_pes(&datos).unwrap();
 
     let comps = component_map(&pmt, None).unwrap();
     let comp_tuples = map_tuples(&comps);
@@ -226,6 +159,20 @@ fn m4_intervalos_de_entrada() {
 
     for (counter, iv) in intervalos.iter().enumerate() {
         assert_eq!(iv.video_count(0), 6);
+
+        let is_final = counter == intervalos.len() - 1;
+        let audio_en_intervalo = iv.units.iter().filter(|u| u.comp == 1).count();
+        if !is_final {
+            assert!(
+                audio_en_intervalo == 0 || audio_en_intervalo == 8 || audio_en_intervalo == 16,
+                "intervalo {counter}: tramas de audio inesperadas ({audio_en_intervalo})"
+            );
+        } else {
+            assert_eq!(
+                audio_en_intervalo, 22,
+                "el último intervalo debe contener las 22 tramas de audio pendientes"
+            );
+        }
 
         let base = iv.base().unwrap();
         let mut units_encoded = Vec::new();
@@ -264,4 +211,13 @@ fn m4_intervalos_de_entrada() {
     println!("Número de intervalos: {}", intervalos.len());
     println!("Media de tramas de audio por intervalo: {:.2}", media_audio);
     println!("Media de bytes de carga CBOR: {:.2}", media_bytes);
+
+    assert!(
+        (media_audio - 11.25).abs() < 0.1,
+        "media de audio fuera de rango: {media_audio}"
+    );
+    assert!(
+        (media_bytes - 748.0).abs() <= 748.0 * 0.05,
+        "media de bytes de carga fuera de rango (esperada ~748 B): {media_bytes}"
+    );
 }
