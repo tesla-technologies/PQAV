@@ -348,6 +348,57 @@ mod tests {
         assert_eq!(pts_dif(129_600, 126_000), 3_600);
         assert_eq!(pts_dif(126_000, 129_600), -3_600);
     }
+
+    fn cose_de_prueba(n: usize) -> Vec<u8> {
+        (0..n).map(|i| (i * 7) as u8).collect()
+    }
+
+    fn ida_y_vuelta(n: usize) -> (Vec<[u8; 188]>, Pes) {
+        let cose = cose_de_prueba(n);
+        let mut cc = 0u8;
+        let paquetes = packetize(&anchor_pes(&cose, 126_000), 0x1FF0, &mut cc);
+        let mut asm = PesAssembler::new();
+        for (i, p) in paquetes.iter().enumerate() {
+            let pkt = parse_packet(p).unwrap();
+            assert!(asm.push(&pkt, i as u64).is_none());
+        }
+        let pes = parse_pes(&asm.finish().unwrap()).unwrap();
+        assert_eq!(pes.stream_id, 0xBD);
+        assert_eq!(pes.pts, Some(126_000));
+        assert_eq!(pes.payload, cose);
+        (paquetes, pes)
+    }
+
+    #[test]
+    fn u12_ancla_en_paquetes() {
+        let (p, _) = ida_y_vuelta(3192);
+        assert_eq!(p.len(), 18);
+        assert_eq!(p[0][..4], [0x47, 0x5F, 0xF0, 0x10]);
+        assert_eq!(
+            p[0][4..13],
+            [0x00, 0x00, 0x01, 0xBD, 0x0C, 0x80, 0x80, 0x80, 0x05]
+        );
+        for (i, q) in p.iter().enumerate().take(17).skip(1) {
+            assert_eq!(q[..4], [0x47, 0x1F, 0xF0, 0x10 | (i as u8 % 16)]);
+        }
+        assert_eq!(p[17][..4], [0x47, 0x1F, 0xF0, 0x31]);
+        assert_eq!(p[17][4], 105);
+        assert_eq!(p[17][5], 0x00);
+        assert!(p[17][6..110].iter().all(|&b| b == 0xFF));
+
+        let (p, _) = ida_y_vuelta(2746);
+        assert_eq!(p.len(), 15);
+        assert_eq!(p[14][..4], [0x47, 0x1F, 0xF0, 0x1E]);
+
+        let (p, _) = ida_y_vuelta(2929);
+        assert_eq!(p.len(), 16);
+        assert_eq!(p[15][..5], [0x47, 0x1F, 0xF0, 0x3F, 0x00]);
+
+        let (p, _) = ida_y_vuelta(2747);
+        assert_eq!(p.len(), 16);
+        assert_eq!(p[15][..6], [0x47, 0x1F, 0xF0, 0x3F, 182, 0x00]);
+        assert_eq!(p[15][187], ((2746 * 7) % 256) as u8);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
