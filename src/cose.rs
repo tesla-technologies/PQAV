@@ -2,6 +2,7 @@
 // src/cose.rs
 
 use core::convert::Infallible;
+use minicbor::data::Tag;
 pub use ml_dsa::{MlDsa44, Signature, Signer, SigningKey, VerifyingKey};
 
 pub const PROTECTED: [u8; 4] = [0xA1, 0x01, 0x38, 0x2F];
@@ -37,6 +38,23 @@ pub fn sig_structure(payload: &[u8]) -> Result<Vec<u8>, CoseError> {
     Ok(e.into_writer())
 }
 
+pub fn sign(sk: &SigningKey<MlDsa44>, kid: &[u8; 8], payload: &[u8]) -> Result<Vec<u8>, CoseError> {
+    let to_sign = sig_structure(payload)?;
+    let sig: Signature<MlDsa44> = sk.try_sign(&to_sign).map_err(|_| CoseError::Firmar)?;
+    let sig_bytes = sig.encode();
+
+    let mut e = minicbor::Encoder::new(Vec::new());
+    e.tag(Tag::new(18))?;
+    e.array(4)?;
+    e.bytes(&PROTECTED)?;
+    e.map(1)?;
+    e.u8(4)?;
+    e.bytes(kid)?;
+    e.bytes(payload)?;
+    e.bytes(&sig_bytes[..])?;
+    Ok(e.into_writer())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -59,8 +77,8 @@ mod tests {
         assert_eq!(
             sig_structure(&[0u8; 302]).unwrap()[..21],
             [
-                0x84, 0x6A, 0x53, 0x69, 0x67, 0x6E, 0x61, 0x74, 0x75, 0x72, 0x65, 0x31, 0x44,
-                0xA1, 0x01, 0x38, 0x2F, 0x40, 0x59, 0x01, 0x2E
+                0x84, 0x6A, 0x53, 0x69, 0x67, 0x6E, 0x61, 0x74, 0x75, 0x72, 0x65, 0x31, 0x44, 0xA1,
+                0x01, 0x38, 0x2F, 0x40, 0x59, 0x01, 0x2E
             ]
         );
     }
