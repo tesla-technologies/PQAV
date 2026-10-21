@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // src/keys.rs
-use ml_dsa::{Keypair, MlDsa44, Seed, SigningKey};
+use ml_dsa::{EncodedVerifyingKey, Keypair, MlDsa44, Seed, SigningKey, VerifyingKey};
 use sha2::{Digest, Sha256};
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
@@ -115,4 +115,52 @@ pub fn generar(prefijo: &Path, force: bool) -> Result<Generadas, KeyError> {
         pub_path,
         kid,
     })
+}
+
+pub fn leer_seed(ruta: &Path) -> Result<(SigningKey<MlDsa44>, [u8; 8]), KeyError> {
+    let texto = std::fs::read_to_string(ruta).map_err(|e| KeyError::Io {
+        accion: "leer",
+        ruta: ruta.display().to_string(),
+        fuente: e,
+    })?;
+
+    let trimmed = texto.trim_end();
+    if trimmed.len() != 64 {
+        return Err(KeyError::SemillaInvalida(ruta.display().to_string()));
+    }
+
+    let bytes = hex::decode(trimmed)
+        .map_err(|_| KeyError::SemillaInvalida(ruta.display().to_string()))?;
+
+    let mut semilla = [0u8; 32];
+    semilla.copy_from_slice(&bytes);
+    let sk = SigningKey::<MlDsa44>::from_seed(&Seed::from(semilla));
+    let kid = kid_of(&sk.verifying_key().encode());
+    Ok((sk, kid))
+}
+
+pub fn leer_pub(ruta: &Path) -> Result<(VerifyingKey<MlDsa44>, [u8; 8]), KeyError> {
+    let bytes = std::fs::read(ruta).map_err(|e| KeyError::Io {
+        accion: "leer",
+        ruta: ruta.display().to_string(),
+        fuente: e,
+    })?;
+
+    if bytes.len() != PUB_LEN {
+        return Err(KeyError::PubInvalida {
+            ruta: ruta.display().to_string(),
+            len: bytes.len(),
+        });
+    }
+
+    let enc = EncodedVerifyingKey::<MlDsa44>::try_from(bytes.as_slice()).map_err(|_| {
+        KeyError::PubInvalida {
+            ruta: ruta.display().to_string(),
+            len: bytes.len(),
+        }
+    })?;
+
+    let vk = VerifyingKey::<MlDsa44>::decode(&enc);
+    let kid = kid_of(&bytes);
+    Ok((vk, kid))
 }
