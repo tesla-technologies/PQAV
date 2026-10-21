@@ -564,3 +564,42 @@ pub fn anchor_pes(cose: &[u8], base_pts: u64) -> Vec<u8> {
     pes.extend_from_slice(cose);
     pes
 }
+
+pub fn packetize(pes: &[u8], pid: u16, cc: &mut u8) -> Vec<[u8; 188]> {
+    let mut paquetes = Vec::new();
+    let mut pos = 0;
+    let mut primero = true;
+
+    while pos < pes.len() {
+        let r = pes.len() - pos;
+        let mut pkt = [0xFFu8; 188];
+        let pusi_flag = if primero { 0x40 } else { 0x00 };
+        pkt[0] = 0x47;
+        pkt[1] = pusi_flag | (((pid >> 8) & 0x1F) as u8);
+        pkt[2] = (pid & 0xFF) as u8;
+
+        if r >= 184 {
+            pkt[3] = 0x10 | (*cc & 0x0F);
+            pkt[4..188].copy_from_slice(&pes[pos..pos + 184]);
+            pos += 184;
+        } else {
+            let l = 183 - r;
+            pkt[3] = 0x30 | (*cc & 0x0F);
+            if l == 0 {
+                pkt[4] = 0x00;
+            } else {
+                pkt[4] = l as u8;
+                pkt[5] = 0x00;
+            }
+            let data_start = 5 + l;
+            pkt[data_start..188].copy_from_slice(&pes[pos..]);
+            pos = pes.len();
+        }
+
+        *cc = (*cc + 1) & 0x0F;
+        primero = false;
+        paquetes.push(pkt);
+    }
+
+    paquetes
+}
