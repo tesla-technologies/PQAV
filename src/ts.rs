@@ -553,3 +553,14 @@ pub fn parse_ts_to_pes(datos: &[u8]) -> Result<(Pmt, Vec<(u16, Pes)>), TsError> 
 
     Ok((pmt, pes_list))
 }
+
+pub fn anchor_pes(cose: &[u8], base_pts: u64) -> Vec<u8> {
+    let pes_len = (3 + 5 + cose.len()) as u16;
+    let mut pes = Vec::with_capacity(14 + cose.len());
+    pes.extend_from_slice(&[0x00, 0x00, 0x01, 0xBD]);
+    pes.extend_from_slice(&pes_len.to_be_bytes());
+    pes.extend_from_slice(&[0x80, 0x80, 0x05]);
+    pes.extend_from_slice(&encode_pts(base_pts, 0b0010));
+    pes.extend_from_slice(cose);
+    pes
+}
