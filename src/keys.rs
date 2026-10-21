@@ -164,3 +164,26 @@ pub fn leer_pub(ruta: &Path) -> Result<(VerifyingKey<MlDsa44>, [u8; 8]), KeyErro
     let kid = kid_of(&bytes);
     Ok((vk, kid))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn m5_claves_ida_y_vuelta() {
+        let dir = std::env::temp_dir().join(format!("pqav-m5-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let g = generar(&dir.join("k"), false).unwrap();
+        assert!(matches!(
+            generar(&dir.join("k"), false),
+            Err(KeyError::YaExiste(_))
+        ));
+        assert_eq!(std::fs::read(&g.seed_path).unwrap().len(), 65);
+        assert_eq!(std::fs::read(&g.pub_path).unwrap().len(), 1312);
+        let (_, kid_s) = leer_seed(&g.seed_path).unwrap();
+        let (_, kid_p) = leer_pub(&g.pub_path).unwrap();
+        assert_eq!(kid_s, g.kid);
+        assert_eq!(kid_p, g.kid);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}
