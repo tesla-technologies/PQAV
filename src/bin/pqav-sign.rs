@@ -186,7 +186,7 @@ impl Firmante {
 	} else {
 	    let tramas = split_adts(&pes.payload).map_err(|e| SignError::Adts(e, pos))?;
 	    for (k, t) in tramas.iter().enumerate() {
-		let u_pts = (pts + 120 * k as u64) % (1 << 33);
+		let u_pts = (pts + 1920 * k as u64) % (1 << 33);
 		let hash = hash_audio(t);
 		unidades.push(Unit { comp: 1, pts: u_pts, hash });
 	    }
@@ -263,9 +263,184 @@ impl Firmante {
 }
 
 fn main() -> std::process::ExitCode {
-    std::process::ExitCode::SUCCESS
+    let args = Args::parse();
+    if let Err(e) = run(args) {
+	eprintln!("pqav-sign: error: {}",e);
+	std::process::ExitCode::from(2)
+    } else {
+	std::process::ExitCode::SUCCESS
+    }
 }
 
-fn run(_args: Args) -> Result<(), SignError> {
+fn run(args: Args) -> Result<(), SignError> {
+    let datos = std::fs::read(&args.input)
+	.map_err(|e| SignError::Leer(args.input.display().to_string(), e))?;
+    if datos.len() % TS != 0 {
+	return Err(SignError::NoMultiplo);
+    }
+    let (sk, kid) = leer_seed(&args.key)?;
+    let mut stream_id = [0u8; 16];
+    getrandom::fill(&mut stream_id).map_err(|_| KeyError::Aleatorio)?;
+    let mut f = Firmante {
+	sk, kid, stream_id,
+	counter: 0,
+	prev: [0; 32],
+	cc: 0,
+	anchor_pid: args.anchor_pid,
+	mapa: Vec::new(),
+	video_pid: 0,
+	audio_pid: None,
+	abierto: Interval::default(),
+	vistas: HashSet::new(),
+	cola: VecDeque::new(),
+	pos_entradas: VecDeque::new(),
+	payload_sizes: Vec::new(),
+	sign_us: Vec::new(),
+	video_units_count: 0,
+	audio_units_count: 0,
+	cose_sizes: Vec::new(),
+	pkt_counts: Vec::new(),
+	insert_delays: Vec::new(),
+	null_packets_used: 0,
+	appended_packets: 0,
+	bitrate: args.bitrate,
+    };
+    let mut out_buffer = Vec::with_capacity(datos.len() + 188 * 30);
+    let mut pat_asm = SectionAssembler::new();
+    let mut pmt_asm = SectionAssembler::new();
+    let mut pmt_pid = None;
+    let mut v_asm = PesAssembler::new();
+    let mut a_asm = PesAssembler::new();
+    let mut nulos_in = 0;
+    let num_pkts = (datos.len() / TS) as u64;
+
+    for (i, p) in datos.chunks_exact(TS).enumerate() {
+	let i = i as u64;
+	let pkt = parse_packet(p).map_err(|e| SignError::Ts(e, i))?;
+
+	if pkt.pid == f.anchor_pid {
+	    return Err(SignError::YaFirmado);
+	}
+
+	if pkt.pid == NULL_PID {
+	    nulos_in += 1;
+	}
+
+	let mut replaced = false;
+	if pkt.pid == NULL_PID && !f.cola.is_empty() {
+	    let ancla = f.cola.front_mut().unwrap();
+	    let p_out = ancla.pop_front().unwrap();
+	    out_buffer.extend_from_slice(&p_out);
+	    f.null_packets_used += 1;
+	    replaced = true;
+	    if ancla.is_empty() {
+		f.cola.pop_front();
+		let p_in = f.pos_entradas.pop_front().unwrap();
+		let out_idx = (out_buffer.len() / TS -1) as f64;
+		let delay = (out_idx - p_in as f64) * 188.0 * 8.0 / args.bitrate as f64 * 1000.0;
+		f.insert_delays.push(delay);
+	    }
+	}
+	
+	if !replaced {
+	    out_buffer.extend_from_slice(p);
+	}
+
+	if pkt.pid == 0x0000 {
+	    if let Some(s) = pat_asm.push(&pkt){
+		pmt_pid = Some(parse_pat(&s).map_err(|e| SignError::Tabla(e, 0x0000, i))?);
+	    }
+	}else if Some(pkt.pid) == pmt_pid {
+	    if let Some(s) = pmt_asm.push(&pkt) {
+		let pmt = parse_pmt(&s).map_err(|e| SignError::Tabla(e,pmt_pid.unwrap(), i))?;
+		if f.mapa.is_empty() {
+		    if find_anchor_pid(&pmt).is_some() || pmt.es.iter().any(|e| e.pid == f.anchor_pid) {
+			return Err(SignError::YaFirmado);
+		    }
+		    let m = component_map(&pmt, Some(f.anchor_pid)).map_err(|e| SignError::Units(e, i))?;
+		    f.mapa=m;
+		    f.video_pid = f.mapa[0].pid;
+		    if f.mapa.len() > 1 {
+			f.audio_pid = Some(f.mapa[1].pid);
+		    }
+		} else {
+		    let m = component_map(&pmt, Some(f.anchor_pid)).unwrap_or_default();
+		    if m != f.mapa || f.mapa[0].pid != f.video_pid {
+			return Err(SignError::PmtCambia(i));
+		    }
+		}
+	    }
+	} else if !f.mapa.is_empty() {
+	    if pkt.pid == f.video_pid {
+		if let Some(raw) = v_asm.push(&pkt, i) {
+		    f.procesar_pes(f.video_pid, raw, i)?;
+		}
+	    } else if Some(pkt.pid) == f.audio_pid {
+		if let Some(raw) = a_asm.push(&pkt, i) {
+		    f.procesar_pes(f.audio_pid.unwrap(), raw, i)?;
+		}
+	    }
+	}	
+    }
+
+    if f.mapa.is_empty() {
+	return Err(SignError::SinTablas);
+    }
+
+    if let Some(raw) = v_asm.finish() {
+	f.procesar_pes(f.video_pid, raw, num_pkts)?;
+    }
+
+    if let Some(a_pid) = f.audio_pid {
+	if let Some(raw) = a_asm.finish() {
+	    f.procesar_pes(a_pid, raw, num_pkts)?;
+	}
+    }
+
+    if f.counter == 0 && f.abierto.video_count(0) == 0 {
+	return Err(SignError::SinUnidades);
+    }
+
+    f.cerrar_intervalo(true, num_pkts)?;
+
+    while let Some(mut ancla) = f.cola.pop_front() {
+	let p_in = f.pos_entradas.pop_front().unwrap();
+	while let Some(pkt) = ancla.pop_front() {
+	    out_buffer.extend_from_slice(&pkt);
+	    f.appended_packets += 1;
+	}
+	let out_idx = (out_buffer.len() / TS -1) as f64;
+	let delay = (out_idx -p_in as f64) * 188.0 * 8.0 / args.bitrate as f64 * 1000.0;
+	f.insert_delays.push(delay);
+    }
+
+    std::fs::write(&args.out, &out_buffer)
+	.map_err(|e| SignError::Escribir(args.out.display().to_string(),e))?;
+
+    let anclas = f.counter;
+
+    if let Some(s) = args.stats {
+	let st = Stats {
+	    anchors: anclas,
+	    video_units: f.video_units_count,
+	    audio_units: f.audio_units_count,
+	    payload_bytes: calc_stat(&f.payload_sizes),
+	    cose_bytes: calc_stat(&f.cose_sizes),
+	    ts_packets_per_anchor: calc_stat_f(&f.pkt_counts),
+	    appended_packets: f.appended_packets,
+	    insert_delay_ms: calc_perc_f(f.insert_delays),
+	    sign_us: calc_perc_u(f.sign_us),
+	    input_packets: num_pkts,
+	    null_packets_in: nulos_in,
+	    null_packets_used: f.null_packets_used,
+	    bitrate_bps: args.bitrate,
+	};
+	let js = serde_json::to_string_pretty(&st).unwrap();
+	std::fs::write(&s, js).map_err(|e| SignError::Escribir(s.display().to_string(), e))?;
+    }
+    println!(
+        "pqav-sign: {} anclas; {} unidades de vídeo y {} de audio; {} paquetes leídos; {} nulos sustituidos; {} añadidos al final",
+        anclas, f.video_units_count, f.audio_units_count, num_pkts, f.null_packets_used, f.appended_packets
+    );
     Ok(())
 }
