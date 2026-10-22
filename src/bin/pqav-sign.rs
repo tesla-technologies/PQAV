@@ -11,6 +11,7 @@ use pqav::ts::{
 };
 use pqav::units::{component_map, find_anchor_pid, map_tuples, Component, Interval, Unit, UnitsError};
 use ml_dsa::{MlDsa44, SigningKey};
+use sha2::Digest;
 use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 use std::time::Instant;
@@ -142,6 +143,123 @@ fn calc_perc_u(mut v: Vec<u64>) -> PercentilesU {
     let i50 = (0.50 * n).ceil() as usize - 1;
     let i99 = (0.99 * n).ceil() as usize - 1;
     PercentilesU { p50: v[i50], p99: v[i99], samples: s }
+}
+
+struct Firmante {
+    sk: SigningKey<MlDsa44>,
+    kid: [u8; 8],
+    stream_id: [u8;16],
+    counter: u64,
+    prev: [u8; 32],
+    cc: u8,
+    anchor_pid: u16,
+    mapa: Vec<Component>,
+    video_pid: u16,
+    audio_pid: Option<u16>,
+    abierto: Interval,
+    vistas: HashSet<(u8, u64)>,
+    cola: VecDeque<VecDeque<[u8;188]>>,
+    pos_entradas: VecDeque<u64>,
+    payload_sizes: Vec<usize>,
+    sign_us: Vec<u64>,
+    video_units_count: u64,
+    audio_units_count: u64,
+    cose_sizes: Vec<usize>,
+    pkt_counts: Vec<usize>,
+    insert_delays: Vec<f64>,
+    null_packets_used: u64,
+    appended_packets: u64,
+    bitrate: u64,
+}
+
+impl Firmante {
+    fn procesar_pes(&mut self, pid: u16, raw: RawPes, pos: u64) -> Result<(),SignError> {
+	let is_video = pid == self.video_pid;
+	let p_name = if is_video { "video" } else { "audio" };
+	let pes = parse_pes(&raw).map_err(|e| SignError::Ts(e, raw.first_packet))?;
+	let pts = pes.pts.ok_or(SignError::SinPts(p_name, raw.first_packet))?;
+
+	let mut unidades = Vec::new();
+	if is_video {
+	    let hash = hash_video(&pes.payload).map_err(|e| SignError::H264(e,pos))?;
+	    unidades.push(Unit { comp: 0, pts, hash});
+	} else {
+	    let tramas = split_adts(&pes.payload).map_err(|e| SignError::Adts(e, pos))?;
+	    for (k, t) in tramas.iter().enumerate() {
+		let u_pts = (pts + 120 * k as u64) % (1 << 33);
+		let hash = hash_audio(t);
+		unidades.push(Unit { comp: 1, pts: u_pts, hash });
+	    }
+	}
+	
+	for u in unidades {
+	    if self.vistas.contains(&(u.comp, u.pts)) {
+		return Err(SignError::Repetida { comp: u.comp, pts: u.pts });
+	    }
+	    if u.comp == 0 && self.abierto.video_count(0) == 6 {
+		self.cerrar_intervalo(false, pos)?;
+	    }
+	    self.abierto.units.push(u);
+	    self.vistas.insert((u.comp, u.pts));
+	    if u.comp == 0 {
+		self.video_units_count += 1;
+	    } else {
+	    	self.audio_units_count += 1;
+	    }
+	}
+	Ok(())	
+    }
+
+    fn cerrar_intervalo(&mut self, is_final: bool, pos_entrada: u64) -> Result<(), SignError> {
+	let base = self.abierto.base().map_err(|e| SignError::Units(e, pos_entrada))?;
+	let mut units = Vec::new();
+	for u in &self.abierto.units {
+	    let r = self.abierto.rel(base, u).map_err(|e| SignError::Units(e, pos_entrada))?;
+	    units.push((u.comp, r, u.hash));
+	}
+
+	let p = AnchorPayload {
+	    stream_id: self.stream_id,
+	    counter: self.counter,
+	    prev: self.prev,
+	    components: map_tuples(&self.mapa),
+	    units,
+	    is_final,
+	};
+
+	let carga = encode(&p)?;
+	self.payload_sizes.push(carga.len());
+
+	let t0 = Instant::now();
+	let cose = cose::sign(&self.sk, &self.kid, &carga)?;
+	self.sign_us.push(t0.elapsed().as_micros() as u64);
+	self.cose_sizes.push(cose.len());
+
+	let mut hasher = sha2::Sha256::new();
+	sha2::Digest::update(&mut hasher, &cose);
+	self.prev.copy_from_slice(&hasher.finalize());
+	self.counter += 1;
+
+	let pes = anchor_pes(&cose, base);
+	let paquetes = packetize(&pes, self.anchor_pid, &mut self.cc);
+	self.pkt_counts.push(paquetes.len());
+
+	let deque: VecDeque<[u8; 188]> = paquetes.into_iter().collect();
+	self.cola.push_back(deque);
+	self.pos_entradas.push_back(pos_entrada);
+
+	if !is_final && self.cola.len() > 3 {
+	    let t_s = (pos_entrada as f64 * 188.0 * 8.0) / self.bitrate as f64;
+	    let nulos_kbps = if t_s > 0.0 {
+		(self.null_packets_used as f64 * 188.0 * 8.0 / 1000.0) / t_s
+	    } else {
+		0.0
+	    };
+	    return Err(SignError::Hueco(nulos_kbps as u64));	    
+	}
+	self.abierto.units.clear();
+	Ok(())
+    }
 }
 
 fn main() -> std::process::ExitCode {
