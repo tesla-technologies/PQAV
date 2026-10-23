@@ -243,16 +243,17 @@ impl Firmante {
                 hash,
             });
         } else {
-            let a_idx = self.audio_idx.unwrap();
-            let tramas = split_adts(&pes.payload).map_err(|e| SignError::Adts(e, pos))?;
-            for (k, t) in tramas.iter().enumerate() {
-                let u_pts = (pts + 1920 * k as u64) % (1 << 33);
-                let hash = hash_audio(t);
-                unidades.push(Unit {
-                    comp: a_idx,
-                    pts: u_pts,
-                    hash,
-                });
+            if let Some(a_idx) = self.audio_idx {
+                let tramas = split_adts(&pes.payload).map_err(|e| SignError::Adts(e, pos))?;
+                for (k, t) in tramas.iter().enumerate() {
+                    let u_pts = (pts + 1920 * k as u64) % (1 << 33);
+                    let hash = hash_audio(t);
+                    unidades.push(Unit {
+                        comp: a_idx,
+                        pts: u_pts,
+                        hash,
+                    });
+                }
             }
         }
 
@@ -404,18 +405,23 @@ fn run(args: Args) -> Result<(), SignError> {
         }
 
         let mut replaced = false;
+
         if pkt.pid == NULL_PID && !f.cola.is_empty() {
-            let ancla = f.cola.front_mut().unwrap();
-            let p_out = ancla.pop_front().unwrap();
-            out_buffer.extend_from_slice(&p_out);
-            f.null_packets_used += 1;
-            replaced = true;
-            if ancla.is_empty() {
-                f.cola.pop_front();
-                let p_in = f.pos_entradas.pop_front().unwrap();
-                let out_idx = (out_buffer.len() / TS - 1) as f64;
-                let delay = (out_idx - p_in as f64) * 188.0 * 8.0 / args.bitrate as f64 * 1000.0;
-                f.insert_delays.push(delay);
+            if let Some(ancla) = f.cola.front_mut() {
+                if let Some(p_out) = ancla.pop_front() {
+                    out_buffer.extend_from_slice(&p_out);
+                    f.null_packets_used += 1;
+                    replaced = true;
+                    if ancla.is_empty() {
+                        f.cola.pop_front();
+                        if let Some(p_in) = f.pos_entradas.pop_front() {
+                            let out_idx = (out_buffer.len() / TS - 1) as f64;
+                            let delay = (out_idx - p_in as f64) * 188.0 * 8.0 / args.bitrate as f64
+                                * 1000.0;
+                            f.insert_delays.push(delay);
+                        }
+                    }
+                }
             }
         }
 
@@ -429,7 +435,8 @@ fn run(args: Args) -> Result<(), SignError> {
             }
         } else if Some(pkt.pid) == pmt_pid {
             if let Some(s) = pmt_asm.push(&pkt) {
-                let pmt = parse_pmt(&s).map_err(|e| SignError::Tabla(e, pmt_pid.unwrap(), i))?;
+                let pid = pmt_pid.unwrap_or(0x0000);
+                let pmt = parse_pmt(&s).map_err(|e| SignError::Tabla(e, pid, i))?;
                 if f.mapa.is_empty() {
                     if find_anchor_pid(&pmt).is_some()
                         || pmt.es.iter().any(|e| e.pid == f.anchor_pid)
@@ -487,14 +494,15 @@ fn run(args: Args) -> Result<(), SignError> {
     f.cerrar_intervalo(true, num_pkts)?;
 
     while let Some(mut ancla) = f.cola.pop_front() {
-        let p_in = f.pos_entradas.pop_front().unwrap();
-        while let Some(pkt) = ancla.pop_front() {
-            out_buffer.extend_from_slice(&pkt);
-            f.appended_packets += 1;
+        if let Some(p_in) = f.pos_entradas.pop_front() {
+            while let Some(pkt) = ancla.pop_front() {
+                out_buffer.extend_from_slice(&pkt);
+                f.appended_packets += 1;
+            }
+            let out_idx = (out_buffer.len() / TS - 1) as f64;
+            let delay = (out_idx - p_in as f64) * 188.0 * 8.0 / args.bitrate as f64 * 1000.0;
+            f.insert_delays.push(delay);
         }
-        let out_idx = (out_buffer.len() / TS - 1) as f64;
-        let delay = (out_idx - p_in as f64) * 188.0 * 8.0 / args.bitrate as f64 * 1000.0;
-        f.insert_delays.push(delay);
     }
 
     std::fs::write(&args.out, &out_buffer)
@@ -518,7 +526,12 @@ fn run(args: Args) -> Result<(), SignError> {
             null_packets_used: f.null_packets_used,
             bitrate_bps: args.bitrate,
         };
-        let js = serde_json::to_string_pretty(&st).unwrap();
+        let js = serde_json::to_string_pretty(&st).map_err(|e| {
+            SignError::Escribir(
+                s.display().to_string(),
+                std::io::Error::new(std::io::ErrorKind::InvalidData, e),
+            )
+        })?;
         std::fs::write(&s, js).map_err(|e| SignError::Escribir(s.display().to_string(), e))?;
     }
     println!(
