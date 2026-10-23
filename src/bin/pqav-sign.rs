@@ -228,33 +228,21 @@ struct Firmante {
 impl Firmante {
     fn procesar_pes(&mut self, pid: u16, raw: RawPes, pos: u64) -> Result<(), SignError> {
         let is_video = pid == self.video_pid;
-        let p_name = if is_video { "video" } else { "audio" };
-        let pes = parse_pes(&raw).map_err(|e| SignError::Ts(e, raw.first_packet))?;
-        let pts = pes.pts.ok_or(SignError::SinPts(p_name, raw.first_packet))?;
-
-        let mut unidades = Vec::new();
-
-        if is_video {
-            let hash = hash_video(&pes.payload).map_err(|e| SignError::H264(e, pos))?;
-            unidades.push(Unit {
-                comp: self.video_idx,
-                pts,
-                hash,
-            });
+        let p_name = if is_video { "vídeo" } else { "audio" };
+        let comp_idx = if is_video {
+            self.video_idx
         } else {
-            if let Some(a_idx) = self.audio_idx {
-                let tramas = split_adts(&pes.payload).map_err(|e| SignError::Adts(e, pos))?;
-                for (k, t) in tramas.iter().enumerate() {
-                    let u_pts = (pts + 1920 * k as u64) % (1 << 33);
-                    let hash = hash_audio(t);
-                    unidades.push(Unit {
-                        comp: a_idx,
-                        pts: u_pts,
-                        hash,
-                    });
-                }
-            }
-        }
+            self.audio_idx.unwrap()
+        };
+
+        let pes = parse_pes(&raw).map_err(|e| SignError::Ts(e, raw.first_packet))?;
+
+        let unidades =
+            pqav::units::extraer_unidades(&pes, is_video, comp_idx).map_err(|e| match e {
+                pqav::units::ExtractError::SinPts => SignError::SinPts(p_name, raw.first_packet),
+                pqav::units::ExtractError::H264(err) => SignError::H264(err, pos),
+                pqav::units::ExtractError::Adts(err) => SignError::Adts(err, pos),
+            })?;
 
         for u in unidades {
             if self.vistas.contains(&(u.comp, u.pts)) {

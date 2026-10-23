@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // src/units.rs
-use crate::adts::{hash_audio, split_adts};
-use crate::h264::hash_video;
+use crate::adts::{hash_audio, split_adts, AdtsError};
+use crate::h264::{hash_video, H264};
 use crate::ts::{pts_dif, Pes, Pmt, PTS_MOD};
 
 pub const REL_MAX: i64 = 1 << 20;
@@ -18,6 +18,16 @@ pub enum UnitsError {
     SinVideo,
     #[error("la PMT tiene más de un vídeo o más de un audio")]
     DemasiadosFlujos,
+}
+
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum ExtractError {
+    #[error("PES sin PTS")]
+    SinPts,
+    #[error(transparent)]
+    H264(#[from] H264Error),
+    #[error(transparent)]
+    Adts(#[from] AdtsError),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -162,42 +172,33 @@ pub fn map_tuples(comps: &[Component]) -> Vec<(u8, String, u8)> {
         .collect()
 }
 
-pub fn parse_pes_to_intervals(
-    raw_pes_list: &[(u16, Pes)],
-    video_pid: u16,
-    audio_pid: Option<u16>,
-) -> Result<Vec<Interval>, UnitsError> {
-    let mut intervalos = Vec::new();
-    let mut abierto = Interval::default();
-
-    for (pid, pes) in raw_pes_list {
-        if *pid == video_pid {
-            let hash = hash_video(&pes.payload).map_err(|_| UnitsError::SinVideo)?;
-            let pts = pes.pts.ok_or(UnitsError::IntervaloVacio)?;
-            let unit = Unit { comp: 0, pts, hash };
-
-            // Regla del apartado 6 del Doc 02: al intentar meter la 7.ª unidad de vídeo, se cierra el intervalo.
-            if abierto.video_count(0) == 6 {
-                intervalos.push(std::mem::take(&mut abierto));
-            }
-            abierto.units.push(unit);
-        } else if Some(*pid) == audio_pid {
-            let tramas = split_adts(&pes.payload).map_err(|_| UnitsError::IntervaloVacio)?;
-            let base_pts = pes.pts.ok_or(UnitsError::IntervaloVacio)?;
-            for (k, trama) in tramas.iter().enumerate() {
-                let pts = (base_pts + 1920 * k as u64) % PTS_MOD;
-                let hash = hash_audio(trama);
-                let unit = Unit { comp: 1, pts, hash };
-                abierto.units.push(unit);
-            }
+pub fn extraer_unidades(
+    pes: &Pes,
+    is_video: bool,
+    comp_idx: u8,
+) -> Result<Vec<Unit>, ExtractError> {
+    let pts = pes.pts.ok_or(ExtractError::SinPts)?;
+    let mut unidades = Vec::new();
+    if is_video {
+        let hash = hash_video(&pes.payload)?;
+        unidades.push(Unit {
+            comp: comp_idx,
+            pts,
+            hash,
+        });
+    } else {
+        let tramas = split_adts(&pes.payload)?;
+        for (k, t) in tramas.iter().enumerate() {
+            let u_pts = (pts + 1920 * k as u64) % PTS_MOD;
+            let hash = hash_audio(t);
+            unidades.push(Unit {
+                comp: comp_idx,
+                pts: u_pts,
+                hash,
+            });
         }
     }
-
-    if !abierto.units.is_empty() {
-        intervalos.push(abierto);
-    }
-
-    Ok(intervalos)
+    Ok(unidades)
 }
 
 #[cfg(test)]
