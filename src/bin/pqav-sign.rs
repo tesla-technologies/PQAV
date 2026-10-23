@@ -212,8 +212,7 @@ struct Firmante {
     audio_idx: Option<u8>,
     abierto: Interval,
     vistas: HashSet<(u8, u64)>,
-    cola: VecDeque<VecDeque<[u8; 188]>>,
-    pos_entradas: VecDeque<u64>,
+    cola: VecDeque<(VecDeque<[u8; 188]>, Option<u64>)>,
     payload_sizes: Vec<usize>,
     sign_us: Vec<u64>,
     video_units_count: u64,
@@ -319,8 +318,7 @@ impl Firmante {
         self.pkt_counts.push(paquetes.len());
 
         let deque: VecDeque<[u8; 188]> = paquetes.into_iter().collect();
-        self.cola.push_back(deque);
-        self.pos_entradas.push_back(pos_entrada);
+        self.cola.push_back(deque, Some(pos_entrada));
 
         if !is_final && self.cola.len() > 3 {
             let t_s = (pos_entrada as f64 * 188.0 * 8.0) / self.bitrate as f64;
@@ -371,7 +369,6 @@ fn run(args: Args) -> Result<(), SignError> {
         abierto: Interval::default(),
         vistas: HashSet::new(),
         cola: VecDeque::new(),
-        pos_entradas: VecDeque::new(),
         payload_sizes: Vec::new(),
         sign_us: Vec::new(),
         video_units_count: 0,
@@ -407,21 +404,21 @@ fn run(args: Args) -> Result<(), SignError> {
         let mut replaced = false;
 
         if pkt.pid == NULL_PID && !f.cola.is_empty() {
-            if let Some(ancla) = f.cola.front_mut() {
+            if let Some((ancla, opt_p_in)) = f.cola.front_mut() {
+                if let Some(p_in) = opt_p_in.take() {
+                    let out_idx = (out_buffer.len() / TS) as f64;
+                    let delay =
+                        (out_idx - p_in as f64) * 188.0 * 8.0 / args.bitrate as f64 * 1000.0;
+                    f.insert_delays.push(delay);
+                }
                 if let Some(p_out) = ancla.pop_front() {
                     out_buffer.extend_from_slice(&p_out);
                     f.null_packets_used += 1;
                     replaced = true;
-                    if ancla.is_empty() {
-                        f.cola.pop_front();
-                        if let Some(p_in) = f.pos_entradas.pop_front() {
-                            let out_idx = (out_buffer.len() / TS - 1) as f64;
-                            let delay = (out_idx - p_in as f64) * 188.0 * 8.0 / args.bitrate as f64
-                                * 1000.0;
-                            f.insert_delays.push(delay);
-                        }
-                    }
                 }
+            }
+            if f.cola.front().map(|(a, _)| a.is_empty()).unwrap_or(false) {
+                f.cola.pop_front();
             }
         }
 
@@ -493,15 +490,15 @@ fn run(args: Args) -> Result<(), SignError> {
 
     f.cerrar_intervalo(true, num_pkts)?;
 
-    while let Some(mut ancla) = f.cola.pop_front() {
-        if let Some(p_in) = f.pos_entradas.pop_front() {
-            while let Some(pkt) = ancla.pop_front() {
-                out_buffer.extend_from_slice(&pkt);
-                f.appended_packets += 1;
-            }
-            let out_idx = (out_buffer.len() / TS - 1) as f64;
+    while let Some((mut ancla, opt_p_in)) = f.cola.pop_front() {
+        if let Some(p_in) = opt_p_in {
+            let out_idx = (out_buffer.len() / TS) as f64;
             let delay = (out_idx - p_in as f64) * 188.0 * 8.0 / args.bitrate as f64 * 1000.0;
             f.insert_delays.push(delay);
+        }
+        while let Some(pkt) = ancla.pop_front() {
+            out_buffer.extend_from_slice(&pkt);
+            f.appended_packets += 1;
         }
     }
 

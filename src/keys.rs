@@ -2,7 +2,6 @@
 // src/keys.rs
 use ml_dsa::{EncodedVerifyingKey, Keypair, MlDsa44, Seed, SigningKey, VerifyingKey};
 use sha2::{Digest, Sha256};
-use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 
 pub const PUB_LEN: usize = 1312;
@@ -68,7 +67,10 @@ pub fn generar(prefijo: &Path, force: bool) -> Result<Generadas, KeyError> {
 
     #[cfg(unix)]
     {
+        #[cfg(unix)]
+        use std::fs::OpenOptions;
         use std::io::Write;
+        #[cfg(unix)]
         use std::os::unix::fs::OpenOptionsExt;
         use std::os::unix::fs::PermissionsExt;
 
