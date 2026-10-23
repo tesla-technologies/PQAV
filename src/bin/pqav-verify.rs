@@ -6,12 +6,12 @@ use std::path::PathBuf;
 
 fn parse_pid(s: &str) -> Result<u16, String> {
     let p = if s.starts_with("0x") {
-	u16::from_str_radix(&s[2..], 16).map_err(|_| "PID inválido")?
+        u16::from_str_radix(&s[2..], 16).map_err(|_| "PID inválido")?
     } else {
-	s.parse::<u16>().map_err(|_| "PID inválido")?
+        s.parse::<u16>().map_err(|_| "PID inválido")?
     };
     if !(0x0010..=0x1FFE).contains(&p) {
-	return Err(format!("PID 0x{:04X} fuera de rango", p));
+        return Err(format!("PID 0x{:04X} fuera de rango", p));
     }
     Ok(p)
 }
@@ -41,7 +41,7 @@ enum VerifyError {
     Leer(String, std::io::Error),
     #[error("el fichero no mide un múltiplo de 188 bytes")]
     NoMultiplo,
-    #[error("paquete sin sincronía (paquete {0})"]
+    #[error("paquete sin sincronía (paquete {0}")]
     SinSincronia(u64),
     #[error("no se ha encontrado la PAT o la PMT")]
     SinTablas,
