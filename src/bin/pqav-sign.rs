@@ -306,7 +306,7 @@ impl Firmante {
         self.pkt_counts.push(paquetes.len());
 
         let deque: VecDeque<[u8; 188]> = paquetes.into_iter().collect();
-        self.cola.push_back(deque, Some(pos_entrada));
+        self.cola.push_back((deque, Some(pos_entrada)));
 
         if !is_final && self.cola.len() > 3 {
             let t_s = (pos_entrada as f64 * 188.0 * 8.0) / self.bitrate as f64;

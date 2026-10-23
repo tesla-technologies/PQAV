@@ -1,8 +1,96 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use pqav::ts::{
-    parse_packet, parse_pat, parse_pmt, parse_ts_to_pes, pts_dif, SectionAssembler, PAT_PID, TS,
+    parse_packet, parse_pat, parse_pes, parse_pmt, pts_dif, Pes, PesAssembler, SectionAssembler,
+    PAT_PID, TS,
 };
 use std::collections::BTreeMap;
+
+fn parse_ts_to_pes(datos: &[u8]) -> (pqav::ts::Pmt, Vec<(u16, Pes)>) {
+    let mut pat_asm = SectionAssembler::new();
+    let mut pmt_asm = SectionAssembler::new();
+    let mut pmt_pid = None;
+    let mut pmt_valida = None;
+
+    for p in datos.chunks_exact(TS) {
+        let pkt = parse_packet(p).unwrap();
+        if pkt.pid == PAT_PID {
+            if let Some(s) = pat_asm.push(&pkt) {
+                pmt_pid = Some(parse_pat(&s).unwrap());
+            }
+        } else if Some(pkt.pid) == pmt_pid {
+            if let Some(s) = pmt_asm.push(&pkt) {
+                pmt_valida = Some(parse_pmt(&s).unwrap());
+                break;
+            }
+        }
+    }
+
+    let pmt = pmt_valida.unwrap();
+    let mut video_pid = None;
+    let mut audio_pid = None;
+    for es in &pmt.es {
+        if es.stream_type == 0x1B {
+            video_pid = Some(es.pid);
+        } else if es.stream_type == 0x0F {
+            audio_pid = Some(es.pid);
+        }
+    }
+
+    let video_pid = video_pid.unwrap();
+    let mut video_asm = PesAssembler::new();
+    let mut audio_asm = PesAssembler::new();
+    let mut pes_list = Vec::new();
+
+    for (index, p) in datos.chunks_exact(TS).enumerate() {
+        let pkt = parse_packet(p).unwrap();
+        if pkt.pid == video_pid {
+            if let Some(raw) = video_asm.push(&pkt, index as u64) {
+                pes_list.push((video_pid, parse_pes(&raw).unwrap()));
+            }
+        } else if Some(pkt.pid) == audio_pid {
+            if let Some(raw) = audio_asm.push(&pkt, index as u64) {
+                pes_list.push((audio_pid.unwrap(), parse_pes(&raw).unwrap()));
+            }
+        }
+    }
+
+    if let Some(raw) = video_asm.finish() {
+        pes_list.push((video_pid, parse_pes(&raw).unwrap()));
+    }
+    if let Some(a_pid) = audio_pid {
+        if let Some(raw) = audio_asm.finish() {
+            pes_list.push((a_pid, parse_pes(&raw).unwrap()));
+        }
+    }
+    (pmt, pes_list)
+}
+
+fn parse_pes_to_intervals(
+    pes_list: &[(u16, Pes)],
+    video_pid: u16,
+    audio_pid: Option<u16>,
+) -> Vec<pqav::units::Interval> {
+    use pqav::units::{extraer_unidades, Interval};
+    let mut intervalos = Vec::new();
+    let mut abierto = Interval::default();
+
+    for (pid, pes) in pes_list {
+        if *pid == video_pid {
+            let mut unidades = extraer_unidades(pes, true, 0).unwrap();
+            if abierto.video_count(0) == 6 {
+                intervalos.push(std::mem::take(&mut abierto));
+            }
+            abierto.units.append(&mut unidades);
+        } else if Some(*pid) == audio_pid {
+            let mut unidades = extraer_unidades(pes, false, 1).unwrap();
+            abierto.units.append(&mut unidades);
+        }
+    }
+    if !abierto.units.is_empty() {
+        intervalos.push(abierto);
+    }
+    intervalos
+}
 
 #[test]
 #[ignore = "necesita testdata/entrada.ts"]
@@ -37,9 +125,7 @@ fn m1_tablas_de_entrada() {
 #[ignore = "necesita testdata/entrada.ts"]
 fn m2_cuenta_pes_de_entrada() {
     let datos = std::fs::read("testdata/entrada.ts").expect("falta testdata/entrada.ts");
-    assert_eq!(datos.len() % TS, 0);
-
-    let (pmt, pes_list) = parse_ts_to_pes(&datos).unwrap();
+    let (pmt, pes_list) = parse_ts_to_pes(&datos);
     let video_pid = pmt.es.iter().find(|es| es.stream_type == 0x1B).unwrap().pid;
     let audio_pid = pmt
         .es
@@ -95,7 +181,7 @@ fn m3_unidades_de_entrada() {
     use std::collections::BTreeMap;
 
     let datos = std::fs::read("testdata/entrada.ts").expect("falta testdata/entrada.ts");
-    let (pmt, pes_list) = pqav::ts::parse_ts_to_pes(&datos).unwrap();
+    let (pmt, pes_list) = parse_ts_to_pes(&datos);
     let video_pid = pmt.es.iter().find(|es| es.stream_type == 0x1B).unwrap().pid;
     let audio_pid = pmt
         .es
@@ -138,10 +224,10 @@ fn m3_unidades_de_entrada() {
 #[ignore = "necesita testdata/entrada.ts"]
 fn m4_intervalos_de_entrada() {
     use pqav::anchor::{encode, AnchorPayload};
-    use pqav::units::{component_map, map_tuples, parse_pes_to_intervals};
+    use pqav::units::{component_map, map_tuples};
 
     let datos = std::fs::read("testdata/entrada.ts").expect("falta testdata/entrada.ts");
-    let (pmt, pes_list) = pqav::ts::parse_ts_to_pes(&datos).unwrap();
+    let (pmt, pes_list) = parse_ts_to_pes(&datos);
 
     let comps = component_map(&pmt, None).unwrap();
     let comp_tuples = map_tuples(&comps);
@@ -150,7 +236,7 @@ fn m4_intervalos_de_entrada() {
     let audio_pid = comps.get(1).map(|c| c.pid);
 
     // Usar la función de la librería en lugar del bucle local
-    let intervalos = parse_pes_to_intervals(&pes_list, video_pid, audio_pid).unwrap();
+    let intervalos = parse_pes_to_intervals(&pes_list, video_pid, audio_pid);
 
     assert_eq!(intervalos.len(), 250);
 

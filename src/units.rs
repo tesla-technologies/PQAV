@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // src/units.rs
 use crate::adts::{hash_audio, split_adts, AdtsError};
-use crate::h264::{hash_video, H264};
+use crate::h264::{hash_video, H264Error};
 use crate::ts::{pts_dif, Pes, Pmt, PTS_MOD};
 
 pub const REL_MAX: i64 = 1 << 20;
