@@ -1,4 +1,4 @@
-#!/usr/bin/env
+#!/usr/bin/env bash
 set -euo pipefail
 KEY="$1"
 IN="$2"
