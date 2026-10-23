@@ -208,6 +208,8 @@ struct Firmante {
     mapa: Vec<Component>,
     video_pid: u16,
     audio_pid: Option<u16>,
+    video_idx: u8,
+    audio_idx: Option<u8>,
     abierto: Interval,
     vistas: HashSet<(u8, u64)>,
     cola: VecDeque<VecDeque<[u8; 188]>>,
@@ -232,16 +234,22 @@ impl Firmante {
         let pts = pes.pts.ok_or(SignError::SinPts(p_name, raw.first_packet))?;
 
         let mut unidades = Vec::new();
+
         if is_video {
             let hash = hash_video(&pes.payload).map_err(|e| SignError::H264(e, pos))?;
-            unidades.push(Unit { comp: 0, pts, hash });
+            unidades.push(Unit {
+                comp: self.video_idx,
+                pts,
+                hash,
+            });
         } else {
+            let a_idx = self.audio_idx.unwrap();
             let tramas = split_adts(&pes.payload).map_err(|e| SignError::Adts(e, pos))?;
             for (k, t) in tramas.iter().enumerate() {
                 let u_pts = (pts + 1920 * k as u64) % (1 << 33);
                 let hash = hash_audio(t);
                 unidades.push(Unit {
-                    comp: 1,
+                    comp: a_idx,
                     pts: u_pts,
                     hash,
                 });
@@ -255,7 +263,7 @@ impl Firmante {
                     pts: u.pts,
                 });
             }
-            if u.comp == 0 && self.abierto.video_count(0) == 6 {
+            if u.comp == self.video_idx && self.abierto.video_count(self.video_idx) == 6 {
                 self.cerrar_intervalo(false, pos)?;
             }
             self.abierto.units.push(u);
@@ -357,6 +365,8 @@ fn run(args: Args) -> Result<(), SignError> {
         mapa: Vec::new(),
         video_pid: 0,
         audio_pid: None,
+        video_idx: 0,
+        audio_idx: None,
         abierto: Interval::default(),
         vistas: HashSet::new(),
         cola: VecDeque::new(),
@@ -429,9 +439,12 @@ fn run(args: Args) -> Result<(), SignError> {
                     let m = component_map(&pmt, Some(f.anchor_pid))
                         .map_err(|e| SignError::Units(e, i))?;
                     f.mapa = m;
-                    f.video_pid = f.mapa[0].pid;
-                    if f.mapa.len() > 1 {
-                        f.audio_pid = Some(f.mapa[1].pid);
+                    f.video_idx = f.mapa.iter().position(|c| c.stream_type == 0x1B).unwrap() as u8;
+                    f.video_pid = f.mapa[f.video_idx as usize].pid;
+
+                    if let Some(pos) = f.mapa.iter().position(|c| c.stream_type == 0x0F) {
+                        f.audio_idx = Some(pos as u8);
+                        f.audio_pid = Some(f.mapa[pos].pid);
                     }
                 } else {
                     let m = component_map(&pmt, Some(f.anchor_pid)).unwrap_or_default();
