@@ -64,16 +64,16 @@ def datos_pes(b):
     return 9 + b[8]
 
 def sub_audio(args):
-    # Pendiente
-    pass
+    print("no implementado", file=sys.stderr)
+    return 1
 
 def sub_video(args):
-    # Pendiente
-    pass
+    print("no implementado", file=sys.stderr)
+    return 1
 
 def sub_anchor_sig(args):
-    # Pendiente
-    pass
+    print("no implementado", file=sys.stderr)
+    return 1
 
 def sub_compare(args):
     try:
