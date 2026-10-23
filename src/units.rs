@@ -85,17 +85,15 @@ pub fn find_anchor_pid(pmt: &Pmt) -> Option<u16> {
 pub fn component_map(pmt: &Pmt, anchor_pid: Option<u16>) -> Result<Vec<Component>, UnitsError> {
     let mut filtradas = Vec::new();
     for es in &pmt.es {
-        if anchor_pid.is_some() && Some(es.pid) == anchor_pid {
-            continue;
-        }
-        if anchor_pid.is_none() && es.stream_type == 0x06 {
-            let es_ancla = es
+        let es_ancla_por_pid = anchor_pid.is_some() && Some(es.pid) == anchor_pid;
+        let es_ancla_por_tipo = es.stream_type == 0x06
+            && es
                 .descriptors
                 .iter()
                 .any(|(tag, data)| *tag == 0x05 && data == b"PQAV");
-            if es_ancla {
-                continue;
-            }
+
+        if es_ancla_por_pid || es_ancla_por_tipo {
+            continue;
         }
         filtradas.push(es);
     }

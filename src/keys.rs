@@ -129,8 +129,8 @@ pub fn leer_seed(ruta: &Path) -> Result<(SigningKey<MlDsa44>, [u8; 8]), KeyError
         return Err(KeyError::SemillaInvalida(ruta.display().to_string()));
     }
 
-    let bytes = hex::decode(trimmed)
-        .map_err(|_| KeyError::SemillaInvalida(ruta.display().to_string()))?;
+    let bytes =
+        hex::decode(trimmed).map_err(|_| KeyError::SemillaInvalida(ruta.display().to_string()))?;
 
     let mut semilla = [0u8; 32];
     semilla.copy_from_slice(&bytes);
