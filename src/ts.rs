@@ -586,9 +586,10 @@ pub fn parse_ts_to_pes(datos: &[u8]) -> Result<(Pmt, Vec<(u16, Pes)>), TsError> 
                 pes_list.push((video_pid, parse_pes(&raw)?));
             }
         } else if Some(pkt.pid) == audio_pid {
-            let a_pid = audio_pid.unwrap();
-            if let Some(raw) = audio_asm.push(&pkt, idx) {
-                pes_list.push((a_pid, parse_pes(&raw)?));
+            if pkt.pid == a_pid {
+                if let Some(raw) = audio_asm.push(&pkt, idx) {
+                    pes_list.push((a_pid, parse_pes(&raw)?));
+                }
             }
         }
     }

@@ -138,8 +138,8 @@ fn calc_stat(v: &[usize]) -> StatCalc<usize> {
             max: 0,
         };
     }
-    let min = *v.iter().min().unwrap();
-    let max = *v.iter().max().unwrap();
+    let min = *v.iter().min().unwrap_or(&0);
+    let max = *v.iter().max().unwrap_or(&0);
     let mean = v.iter().sum::<usize>() as f64 / v.len() as f64;
     StatCalc {
         mean: (mean * 100.0).round() / 100.0,
@@ -155,8 +155,8 @@ fn calc_stat_f(v: &[usize]) -> StatCalcF {
             max: 0,
         };
     }
-    let min = *v.iter().min().unwrap();
-    let max = *v.iter().max().unwrap();
+    let min = *v.iter().min().unwrap_or(&0);
+    let max = *v.iter().max().unwrap_or(&0);
     let mean = v.iter().sum::<usize>() as f64 / v.len() as f64;
     StatCalcF {
         mean: (mean * 100.0).round() / 100.0,
