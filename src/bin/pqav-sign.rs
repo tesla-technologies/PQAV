@@ -1,28 +1,25 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use clap::Parser;
 use ml_dsa::{MlDsa44, SigningKey};
-use pqav::adts::{hash_audio, split_adts, AdtsError};
+use pqav::adts::AdtsError;
 use pqav::anchor::{encode, AnchorError, AnchorPayload};
 use pqav::cose::{self, CoseError};
-use pqav::h264::{hash_video, H264Error};
+use pqav::h264::H264Error;
 use pqav::keys::{leer_seed, KeyError};
 use pqav::ts::{
     anchor_pes, packetize, parse_packet, parse_pat, parse_pes, parse_pmt, PesAssembler, RawPes,
     SectionAssembler, TsError, NULL_PID, TS,
 };
-use pqav::units::{
-    component_map, find_anchor_pid, map_tuples, Component, Interval, Unit, UnitsError,
-};
+use pqav::units::{component_map, find_anchor_pid, map_tuples, Component, Interval, UnitsError};
 use sha2::Digest;
 use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 use std::time::Instant;
 
 fn parse_pid(s: &str) -> Result<u16, String> {
-    let p = if s.starts_with("0x") {
-        u16::from_str_radix(&s[2..], 16).map_err(|_| "PID inválido")?
-    } else {
-        s.parse::<u16>().map_err(|_| "PID inválido")?
+    let p = match s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+        Some(h) => u16::from_str_radix(h, 16).map_err(|_| "PID inválido")?,
+        None => s.parse::<u16>().map_err(|_| "PID inválido")?,
     };
     if !(0x0010..=0x1FFE).contains(&p) {
         return Err(format!("PID 0x{:04X} fuera de rango", p));
@@ -168,7 +165,7 @@ fn calc_perc_f(mut v: Vec<f64>) -> PercentilesF {
     if v.is_empty() {
         return PercentilesF { p50: 0.0, p99: 0.0 };
     }
-    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    v.sort_by(|a, b| a.total_cmp(b));
     let n = v.len() as f64;
     let i50 = (0.50 * n).ceil() as usize - 1;
     let i99 = (0.99 * n).ceil() as usize - 1;
@@ -232,7 +229,7 @@ impl Firmante {
         let comp_idx = if is_video {
             self.video_idx
         } else {
-            self.audio_idx.unwrap()
+            self.audio_idx.ok_or(SignError::SinTablas)?
         };
 
         let pes = parse_pes(&raw).map_err(|e| SignError::Ts(e, raw.first_packet))?;
@@ -431,7 +428,12 @@ fn run(args: Args) -> Result<(), SignError> {
                     let m = component_map(&pmt, Some(f.anchor_pid))
                         .map_err(|e| SignError::Units(e, i))?;
                     f.mapa = m;
-                    f.video_idx = f.mapa.iter().position(|c| c.stream_type == 0x1B).unwrap() as u8;
+                    f.video_idx = f
+                        .mapa
+                        .iter()
+                        .position(|c| c.stream_type == 0x1B)
+                        .ok_or(SignError::Units(UnitsError::SinVideo, i))?
+                        as u8;
                     f.video_pid = f.mapa[f.video_idx as usize].pid;
 
                     if let Some(pos) = f.mapa.iter().position(|c| c.stream_type == 0x0F) {
@@ -452,7 +454,9 @@ fn run(args: Args) -> Result<(), SignError> {
                 }
             } else if Some(pkt.pid) == f.audio_pid {
                 if let Some(raw) = a_asm.push(&pkt, i) {
-                    f.procesar_pes(f.audio_pid.unwrap(), raw, i)?;
+                    if let Some(a_pid) = f.audio_pid {
+                        f.procesar_pes(a_pid, raw, i)?;
+                    }
                 }
             }
         }
@@ -472,7 +476,7 @@ fn run(args: Args) -> Result<(), SignError> {
         }
     }
 
-    if f.counter == 0 && f.abierto.video_count(0) == 0 {
+    if f.counter == 0 && f.abierto.video_count(f.video_idx) == 0 {
         return Err(SignError::SinUnidades);
     }
 
