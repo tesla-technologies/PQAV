@@ -194,9 +194,7 @@ fn primera_pasada(datos: &[u8], arg_anchor_pid: u16) -> Result<Recogido, VerifyE
         }
     }
 
-    if mapa_principal.is_none() {
-        return Err(VerifyError::SinTablas);
-    }
+    let mapa = mapa_principal.ok_or(VerifyError::SinTablas)?;
 
     let mut finish_av = |raw: Option<RawPes>, is_video, idx| {
         if let Some(r) = raw {
@@ -235,7 +233,7 @@ fn primera_pasada(datos: &[u8], arg_anchor_pid: u16) -> Result<Recogido, VerifyE
     }
 
     Ok(Recogido {
-        mapa: mapa_principal.unwrap(),
+        mapa,
         mapas_pmt,
         unidades,
         anclas,
@@ -429,7 +427,7 @@ fn segunda_pasada(r: &Recogido, vk: &VerifyingKey<MlDsa44>, kid: &[u8; 8]) -> Re
             veredictos.push(Verdict::Incompleto);
         }
 
-        let verdict = *veredictos.iter().min().unwrap();
+        let verdict = *veredictos.iter().min().unwrap_or(&Verdict::Autentico);
         let final_detail = if verdict <= Verdict::MapaAlterado {
             detail.map(|s| s.to_string())
         } else {
@@ -786,17 +784,17 @@ fn run() -> Result<ExitCode, ()> {
 
     let mut io_error = false;
     if let Some(json_path) = args.json {
-        let js = serde_json::to_string_pretty(&report).unwrap();
-        if let Err(e) = std::fs::write(&json_path, js) {
-            eprintln!(
-                "pqav-verify: error: no se puede escribir {}: {}",
-                json_path.display(),
-                e
-            );
-            io_error = true;
+        if let Ok(js) = serde_json::to_string_pretty(&report) {
+            if let Err(e) = std::fs::write(&json_path, js) {
+                eprintln!(
+                    "pqav-verify: error: no se puede escribir {}: {}",
+                    json_path.display(),
+                    e
+                );
+                io_error = true;
+            }
         }
     }
-
     if io_error {
         return Ok(ExitCode::from(2));
     }
