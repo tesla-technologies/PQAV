@@ -91,9 +91,55 @@ def cambiar(buf, pos, vigilar_inicio):
                 return False
     return True
 
+def pts_pes(b):
+    if len(b) < 14:
+        return None
+    if (b[7] & 0x80) != 0:
+        b0, b1, b2, b3, b4 = b[9:14]
+        return ((b0 >> 1) & 0x07) << 30 | (b1 << 22) | ((b2 >> 1) & 0x7F) << 15 | (b3 << 7) | ((b4 >> 1) & 0x7F)
+    return None
+
 def sub_audio(args):
-    print("no implementado", file=sys.stderr)
-    return 1
+    pid = int(args.pid, 0)
+    buf = leer_ts(args.in_ts)
+    pes_list = montar_pes(buf, pid)
+    if not pes_list:
+        return 1
+
+    F = args.from_frame
+    C = args.count
+    modificadas = 0
+    global_frame = 0
+
+    for pes_idx, pes in enumerate(pes_list):
+        b = es_bytes(buf, pes)
+        inicio = datos_pes(b)
+        tramas = tramas_adts(b, inicio)
+        pts_base = pts_pes(b)
+
+        for k, (pos, frame_length, hdr_len) in enumerate(tramas):
+            if F <= global_frame < F + C:
+                if frame_length < 24:
+                    print(f"saltada: trama {global_frame} (mide {frame_length} bytes)")
+                else:
+                    offset_en_pes = pos + 8
+                    p_fichero = posicion(pes, offset_en_pes)
+                    if p_fichero != -1:
+                        orig = buf[p_fichero]
+                        cambiar(buf, p_fichero, False)
+                        mod = buf[p_fichero]
+                        pts_str = f" PTS {(pts_base + 1920 * k) % (1<<33)}" if pts_base is not None else ""
+                        print(f"cambiado: PID 0x{pid:04X} PES {pes_idx} trama {global_frame}{pts_str} byte {p_fichero}: 0x{orig:02X} -> 0x{mod:02X}")
+                        modificadas += 1
+            global_frame += 1
+
+    if global_frame < F + C:
+        return 1
+
+    with open(args.out_ts, "wb") as f:
+        f.write(buf)
+    print(f"ts_tamper: {modificadas} bytes cambiados; escrito {args.out_ts}")
+    return 0
 
 def sub_video(args):
     print("no implementado", file=sys.stderr)
