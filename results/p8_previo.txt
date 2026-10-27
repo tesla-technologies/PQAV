@@ -1,0 +1,4 @@
+paquetes: in=319111 other=319111
+iguales: 315360
+distintos (PID en in -> PID en other):
+  0x1FF0 -> 0x1FF0: 3751

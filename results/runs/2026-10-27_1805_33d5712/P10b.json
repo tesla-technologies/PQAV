@@ -1,0 +1,15 @@
+{
+  "global": "SIN_FIRMAR",
+  "reasons": [],
+  "error": null,
+  "anchors": 0,
+  "intervals": [],
+  "received_units": {
+    "video": 1500,
+    "audio": 2814
+  },
+  "unsigned_units": 4314,
+  "unreadable_pes": 0,
+  "final_anchor": false,
+  "verify_us": null
+}

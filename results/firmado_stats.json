@@ -19,16 +19,16 @@
   },
   "appended_packets": 20,
   "insert_delay_ms": {
-    "p50": 20.5,
-    "p99": 54.0
+    "p50": 20.7,
+    "p99": 53.4
   },
   "sign_us": {
-    "p50": 263,
-    "p99": 1471,
+    "p50": 334,
+    "p99": 1901,
     "samples": 250
   },
-  "input_packets": 319089,
-  "null_packets_in": 150737,
+  "input_packets": 319092,
+  "null_packets_in": 150505,
   "null_packets_used": 4434,
   "bitrate_bps": 8000000
 }

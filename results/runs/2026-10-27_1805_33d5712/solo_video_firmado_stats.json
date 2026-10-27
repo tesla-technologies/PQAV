@@ -1,0 +1,34 @@
+{
+  "anchors": 250,
+  "video_units": 1500,
+  "audio_units": 0,
+  "payload_bytes": {
+    "mean": 301.9,
+    "min": 301,
+    "max": 302
+  },
+  "cose_bytes": {
+    "mean": 2745.9,
+    "min": 2745,
+    "max": 2746
+  },
+  "ts_packets_per_anchor": {
+    "mean": 15.0,
+    "min": 15,
+    "max": 15
+  },
+  "appended_packets": 15,
+  "insert_delay_ms": {
+    "p50": 20.1,
+    "p99": 52.1
+  },
+  "sign_us": {
+    "p50": 309,
+    "p99": 1461,
+    "samples": 250
+  },
+  "input_packets": 319064,
+  "null_packets_in": 156523,
+  "null_packets_used": 3735,
+  "bitrate_bps": 8000000
+}

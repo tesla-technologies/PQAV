@@ -1,0 +1,1 @@
+RESULTADO: RECHAZADO  intervalos=250 autenticos=0 firmas_invalidas=250 no_firmadas=4314  motivos: FIRMA_INVALIDA, NO_FIRMADA, SIN_FINAL

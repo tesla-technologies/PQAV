@@ -1,0 +1,8 @@
+Input #0, mpegts, from 'testdata/entrada.ts':
+  Duration: 00:01:00.02, start: 1.458667, bitrate: 7995 kb/s
+  Program 1 
+    Metadata:
+      service_name    : Service01
+      service_provider: FFmpeg
+  Stream #0:0[0x100]: Video: h264 (High) ([27][0][0][0] / 0x001B), yuv420p(progressive), 1920x1080 [SAR 1:1 DAR 16:9], 25 fps, 25 tbr, 90k tbn
+  Stream #0:1[0x101](spa): Audio: aac (LC) ([15][0][0][0] / 0x000F), 48000 Hz, stereo, fltp, 130 kb/s

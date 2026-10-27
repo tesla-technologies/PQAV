@@ -1,0 +1,1 @@
+RESULTADO: RECHAZADO  intervalos=246 autenticos=244 incompletos=2 no_firmadas=22  motivos: INCOMPLETO, HUECO, NO_FIRMADA

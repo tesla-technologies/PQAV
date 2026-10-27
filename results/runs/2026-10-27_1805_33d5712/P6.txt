@@ -1,0 +1,1 @@
+RESULTADO: RECHAZADO  intervalos=250 autenticos=0 mapas_alterados=250  motivos: MAPA_ALTERADO

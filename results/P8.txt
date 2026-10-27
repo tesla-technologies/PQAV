@@ -1,0 +1,1 @@
+RESULTADO: RECHAZADO  intervalos=250 autenticos=124 empalmes=126  motivos: EMPALME
