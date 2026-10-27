@@ -63,6 +63,34 @@ def datos_pes(b):
     if len(b) < 9: return 0
     return 9 + b[8]
 
+def tramas_adts(b, inicio):
+    tramas = []
+    pos = inicio
+    while pos + 7 <= len(b):
+        if ((b[pos] << 4) | (b[pos+1] >> 4)) != 0xFFF:
+            break
+        protection_absent = b[pos+1] & 0x01
+        hdr_len = 7 if protection_absent == 1 else 9
+        frame_length = ((b[pos+3] & 0x03) << 11) | (b[pos+4] << 3) | (b[pos+5] >> 5)
+
+        if frame_length < hdr_len or pos + frame_length > len(b):
+            break
+
+        tramas.append((pos, frame_length, hdr_len))
+        pos += frame_length
+    return tramas
+
+def cambiar(buf, pos, vigilar_inicio):
+    buf[pos] ^= 0xFF
+    if vigilar_inicio:
+        inicio_ventana = max(0, pos - 2)
+        fin_ventana = min(len(buf) - 2, pos + 1)
+        for i in range(inicio_ventana, fin_ventana):
+            if buf[i] == 0x00 and buf[i+1] == 0x00 and buf[i+2] <= 0x03:
+                buf[pos] ^= 0xFF
+                return False
+    return True
+
 def sub_audio(args):
     print("no implementado", file=sys.stderr)
     return 1
