@@ -195,8 +195,35 @@ def sub_video(args):
     return 0
 
 def sub_anchor_sig(args):
-    print("no implementado", file=sys.stderr)
-    return 1
+    pid = int(args.pid, 0)
+    buf = leer_ts(args.in_ts)
+    pes_list = montar_pes(buf, pid)
+
+    if args.anchor >= len(pes_list):
+        return 1
+
+    pes = pes_list[args.anchor]
+    b = es_bytes(buf, pes)
+    
+    if len(b) == 0:
+        return 1
+
+    offset_en_pes = len(b) - 1
+    p_fichero = posicion(pes, offset_en_pes)
+    
+    if p_fichero == -1:
+        return 1
+
+    orig = buf[p_fichero]
+    cambiar(buf, p_fichero, False)
+    mod = buf[p_fichero]
+
+    print(f"cambiado: PID 0x{pid:04X} PES {args.anchor} byte {p_fichero}: 0x{orig:02X} -> 0x{mod:02X}")
+
+    with open(args.out_ts, "wb") as f:
+        f.write(buf)
+    print(f"ts_tamper: 1 bytes cambiados; escrito {args.out_ts}")
+    return 0
 
 def sub_compare(args):
     try:
