@@ -142,8 +142,57 @@ def sub_audio(args):
     return 0
 
 def sub_video(args):
-    print("no implementado", file=sys.stderr)
-    return 1
+    pid = int(args.pid, 0)
+    buf = leer_ts(args.in_ts)
+    pes_list = montar_pes(buf, pid)
+
+    if args.au >= len(pes_list):
+        return 1
+
+    pes = pes_list[args.au]
+    b = es_bytes(buf, pes)
+    inicio = datos_pes(b)
+
+    start_codes = []
+    i = inicio
+    while i < len(b) - 2:
+        if b[i] == 0x00 and b[i+1] == 0x00 and b[i+2] == 0x01:
+            start_codes.append(i + 3)
+            i += 3
+        else:
+            i += 1
+
+    if not start_codes:
+        return 1
+
+    nal_start = start_codes[-1]
+    nal_type = b[nal_start] & 0x1F
+
+    if nal_type not in (1, 5):
+        return 1
+    if len(b) - nal_start < 41:
+        return 1
+
+    offset_en_pes = nal_start + 40
+    p_fichero = posicion(pes, offset_en_pes)
+    if p_fichero == -1:
+        return 1
+
+    while True:
+        orig = buf[p_fichero]
+        if cambiar(buf, p_fichero, True):
+            break
+        p_fichero += 1
+        if p_fichero >= len(buf):
+            return 1
+
+    mod = buf[p_fichero]
+    print(f"cambiado: PID 0x{pid:04X} PES {args.au} byte {p_fichero}: 0x{orig:02X} -> 0x{mod:02X}")
+
+    with open(args.out_ts, "wb") as f:
+        f.write(buf)
+    print(f"ts_tamper: 1 bytes cambiados; escrito {args.out_ts}")
+    return 0
 
 def sub_anchor_sig(args):
     print("no implementado", file=sys.stderr)
