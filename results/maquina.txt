@@ -1,0 +1,6 @@
+Model name:                           AMD Ryzen 5 7520U with Radeon Graphics
+8 hilos
+Mem:           7.4Gi       873Mi       6.1Gi       4.6Mi       581Mi       6.5Gi
+Linux 6.6.87.2-microsoft-standard-WSL2
+rustc 1.99.1 (58cf8f9c3 2026-10-13)
+compilado con cargo build --release
