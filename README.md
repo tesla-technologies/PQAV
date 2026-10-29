@@ -164,7 +164,7 @@ Below is the summary of the test suite (`results/tests.csv`):
 
 ## Format
 
-Please refer to [`FORMATO.md`](FORMAT.md) for the detailed technical specification of the byte structures, payloads, and protocols.
+Please refer to [`FORMATO.md`](FORMATO.md) for the detailed technical specification of the byte structures, payloads, and protocols.
 
 
 
