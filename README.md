@@ -99,7 +99,7 @@ Below is the summary of the test suite (`results/tests.csv`):
 | P10c| Sigs removed (no expect) | SIN_FIRMAR (0) | SIN_FIRMAR (0) | yes |
 | P11 | Different key | RECHAZADO (1), FIRMA_INVALIDA | RECHAZADO (1), FIRMA_INVALIDA | yes |
 | P12 | Corrupt signature | RECHAZADO (1), FIRMA_INVALIDA | RECHAZADO (1), FIRMA_INVALIDA | yes |
-||||
+
 
 
 
@@ -123,7 +123,7 @@ Below is the summary of the test suite (`results/tests.csv`):
 | Verification time per anchor (p50 / p99) | 56 µs / 96 µs |
 | Total verification time (60s file) | 0.13 s |
 | Appended packets at the end | 20 packets |
-|||
+
 
 
 **Machine specs:** AMD Ryzen 5 7520U with Radeon Graphics (8 threads), 7.4Gi RAM, Linux 6.6.87.2-microsoft-standard-WSL2 (Ubuntu 24.04), rustc 1.99.1 (release build).
