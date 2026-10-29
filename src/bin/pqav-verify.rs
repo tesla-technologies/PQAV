@@ -490,6 +490,7 @@ fn segunda_pasada(r: &Recogido, vk: &VerifyingKey<MlDsa44>, kid: &[u8; 8]) -> Re
     }
 
     let global = if r.anclas.is_empty() {
+	reasons.clear();
         Global::SinFirmar
     } else if reasons.is_empty() {
         Global::Autentico
@@ -728,6 +729,9 @@ fn run() -> Result<ExitCode, ()> {
                 args.quiet,
                 args.no_expect_signed,
             );
+	    if let Some(p) = &args.json {
+		if let Ok(js) = serde_json::to_string_pretty(&error_report(msg.clone())) {let _ = std::fs::write(p,js); }
+	    }
             eprintln!("pqav-verify: error: {}", msg);
             return Ok(ExitCode::from(2));
         }
@@ -743,6 +747,9 @@ fn run() -> Result<ExitCode, ()> {
             args.quiet,
             args.no_expect_signed,
         );
+	if let Some(p) = &args.json {
+	    if let Ok(js) = serde_json::to_string_pretty(&error_report(msg.clone())) { let _ = std::fs::write(p, js); }
+	}
         eprintln!("pqav-verify: error: {}", msg);
         return Ok(ExitCode::from(2));
     }
@@ -760,6 +767,9 @@ fn run() -> Result<ExitCode, ()> {
                 args.quiet,
                 args.no_expect_signed,
             );
+	    if let Some(p) = &args.json {
+		if let Ok(js) = serde_json::to_string_pretty(&error_report(msg.clone())) { let _ = std::fs::write(p, js); }
+	    }
             eprintln!("pqav-verify: error: {}", msg);
             return Ok(ExitCode::from(2));
         }
@@ -768,11 +778,15 @@ fn run() -> Result<ExitCode, ()> {
     let recogido = match primera_pasada(&datos, args.anchor_pid) {
         Ok(r) => r,
         Err(e) => {
+	    let msg = e.to_string();
             imprimir_report(
                 &error_report(e.to_string()),
                 args.quiet,
                 args.no_expect_signed,
             );
+	    if let Some(p) = &args.json {
+		if let Ok(js) = serde_json::to_string_pretty(&error_report(msg.clone())) { let _ = std::fs::write(p, js); }
+	    }
             eprintln!("pqav-verify: error: {}", e);
             return Ok(ExitCode::from(2));
         }
