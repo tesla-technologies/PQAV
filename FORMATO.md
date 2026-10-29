@@ -79,7 +79,6 @@ The AUD is gone, and the slice has lost its two trailing zeros. A common mistake
    | `frame_length` | used to advance; is not signed (deduced from data). Must be at least the header length and not exceed the end of the PES | `trama ADTS cortada` |
    | `adts_buffer_fullness`, `private_bit`, `original_copy`, `home`, *copyright* bits | not signed | n/a |
    | `number_of_raw_data_blocks_in_frame` | must be 0 | `ADTS con varios bloques por trama` |
-   ||||
 
    If there are fewer than 7 bytes left at the end of the PES, it's also `trama ADTS cortada`.
 3. PTS of frame k (k = 0 for the first in the PES) = `(PTS_PES + 1920·k) mod 2^33`. An audio PES without PTS: the signer stops with `PES de audio sin PTS`.
@@ -166,7 +165,7 @@ A CBOR map of 7 pairs, with the keys in order 1 to 7, integers always in their s
 | 5 | `components` | list of `[integer, text, integer]` | ≈ 14 B | the map from section 5 |
 | 6 | `units` | list of `[integer, integer, bytes]` | 39 B per unit (37 if `rel` = 0; 41 if `rel` ≥ 65,536) | `[component, rel, hash]` in the order they entered the interval |
 | 7 | `final` | boolean | 1 B | `true` only in the last anchor |
-||||||
+
 
 ### 5.1 Example of the first bytes of a payload
 
@@ -199,7 +198,7 @@ How the bytes of `counter` and `rel` change according to the value:
 | `rel` 1,920 | `19 07 80` | 3 B (39 B) |
 | `rel` 3,600 | `19 0E 10` | 3 B (39 B) |
 | `rel` 65,536 or more | `1A 00 01 00 00` … | 5 B (41 B) |
-||||
+
 
 A complete entry of `units`, that of the video unit from the example in section 4.1 with `rel` = 20,000:
 
@@ -220,7 +219,7 @@ F2 10 C6 E5 CF 4B 27 79 6A 96 27 1F 89 13 4E 59
 |---|---:|---:|
 | Payload | 302 B (301 while `counter` < 24) | ≈ 748 B on average (≈ 620 B with 8 frames, ≈ 930 B with 16) |
 | Complete COSE_Sign1 | 2,746 B (2,745) | ≈ 3,192 B on average |
-||||
+
 
 The COSE always measures the payload plus 2,444 bytes (with the single exception described in section 8, which doesn't occur with these files). If your averages deviate by more than 5%, there is an error.
 The breakdown is in section 8.3 of document 05.
@@ -278,7 +277,7 @@ flowchart TD
 | `PES_header_data_length` | `05` |
 | PTS | the interval base (section 6, point 4), in 5 bytes with the prefix `0010` |
 | data | the COSE_Sign1 |
-|||
+
 
 Example: with a 3,192 B COSE and base 126,000, the first 14 bytes of the PES are
 `00 00 01 BD 0C 80 80 80 05 21 00 07 D8 61` (`0C 80` = 3,200 = 3 + 5 + 3,192).
@@ -305,7 +304,7 @@ Checking table (used by test U12):
 | 2,746 B | 2,760 B | 15 | `47 1F F0 1E`, no adaptation field |
 | 2,929 B | 2,943 B | 16 | `47 1F F0 3F 00`, `L` = 0, then 183 B of data |
 | 2,747 B | 2,761 B | 16 | `47 1F F0 3F B6 00` + 181 `FF`, `L` = 182, then 1 B of data |
-|||||
+
 
 ### 7.3 Null substitution
 
@@ -388,7 +387,7 @@ The drawing summarizes the order of checks. In the program, an anchor that passe
 | A6 | the `counter` is the expected one (section 10.2, point 5) | if it's greater: `HUECO` (missing anchors) and it continues; if it's smaller: `EMPALME` | `contador hacia atrás` (only if it's smaller) |
 | A7 | `prev` = SHA-256 of the previous COSE. Only checked if there was no gap and if the previous anchor passed A1–A4 | `EMPALME` | `prev no coincide` |
 | A8 | `components` is equal to the calculated map of each PMT version that appears in the file | `MAPA_ALTERADO` | `mapa distinto del de la PMT` |
-|||||
+
 
 If several from A5 to A7 fail, `detail` carries the first one in that order. If an interval comes out `MANIPULADO`, `INCOMPLETO`, or `AUTENTICO`, `detail` is `null`.
 
@@ -415,7 +414,7 @@ Why A7 has that exception: if the previous anchor arrived corrupted (test P12), 
 | 4 | `MANIPULADO` | any unit is MODIFICADA |
 | 5 | `INCOMPLETO` | any unit is missing and none is MODIFICADA |
 | 6 | `AUTENTICO` | all good |
-||||
+
 
 `HUECO` is not an interval verdict: the interval whose counter jumps is judged with this table like any other, and the gap is noted in `gap_before` and in the global reasons.
 
@@ -428,7 +427,7 @@ Why A7 has that exception: if the previous anchor arrived corrupted (test P12), 
 | `ERROR_ENTRADA` | the file does not meet section 2 (e.g., audio at 44.1 kHz in the PMT, two programs) or cannot be read; full list in section 12.6 | 2 |
 | `SIN_FIRMAR` | there is no signatures PID or no anchor arrives | 3 |
 | `SIN_FIRMAR` with `--no-expect-signed` | same, but the user has said the source might not sign: just warns | 0 |
-||||
+
 
 The reasons (`reasons` in the JSON) are, without repeating and in this order, those that appear from this list: `FIRMA_INVALIDA`, `EMPALME`, `MAPA_ALTERADO`, `MANIPULADO`, `INCOMPLETO` (interval verdicts other than `AUTENTICO`), `HUECO`, `NO_FIRMADA` (if there is any unsigned unit) and `SIN_FINAL` (if there is no valid anchor with `final = true`). With `AUTENTICO`, `SIN_FIRMAR` and `ERROR_ENTRADA`, the list is empty.
 
@@ -473,7 +472,7 @@ Options are read with `clap` (document 03, section 6.1). All three accept `--hel
 |---|---|---|
 | `--out <prefix>` | mandatory | writes `<prefix>.seed` and `<prefix>.pub`. Example: `--out testdata/fuente` yields `testdata/fuente.seed` and `testdata/fuente.pub` |
 | `--force` | disabled | overwrites files if they already exist. Without it, if either of the two exists, it stops with `el fichero … ya existe` and touches nothing |
-||||
+
 
 Console output if everything goes well (code 0), with the `kid` in hexadecimal, 16 characters:
 
@@ -489,7 +488,7 @@ kid:           <16 hexadecimal characters>
 |---|---|---:|---|
 | `.seed` | the 32-byte seed in lowercase hexadecimal (64 characters) and a newline `\n` | 65 B | 0600 (only your user) |
 | `.pub` | the 1,312 bytes of the ML-DSA-44 public key exactly as given by `encode()`, in binary, without header or newline | 1,312 B | the normal ones (0644) |
-|||||
+
 
 When reading:
 
@@ -510,7 +509,7 @@ To view a key by hand: `cat testdata/fuente.seed` shows the 64 characters; `stat
 | `--bitrate <bit/s>` | `8000000` | bitrate of the input TS. Only used to convert the insertion delay to milliseconds and the null bitrate to kb/s |
 | `--stats <file.json>` | none | writes the statistics from section 13.1. Without this option JSON is not written |
 | `--debug-unit <comp>:<pts>` | none | optional, for debugging only: prints to standard error the hash of that unit (document 07, section 4). Tests do not use it |
-||||
+
 
 Console output if everything goes well (code 0), a single line:
 
@@ -531,7 +530,7 @@ With `entrada.ts` it should say 250 anchors, 1500 video units, about 2812 audio 
 | `--json <file.json>` | none | writes the result from section 13.2. Also written with `SIN_FIRMAR` and with `ERROR_ENTRADA` (except for `clap` usage errors) |
 | `--quiet` | disabled | prints only the `RESULTADO:` line |
 | `--debug-unit <comp>:<pts>` | none | optional, for debugging only: prints to standard error the calculated hash of that unit. Tests do not use it |
-||||
+
 
 ### 10.5 Format of the verifier's text output
 
@@ -576,7 +575,7 @@ The counters in brackets only appear if they are greater than 0. With `SIN_FIRMA
 | `pqav-keygen` | keys written | n/a | usage error, file already exists, error writing | n/a |
 | `pqav-sign` | file signed | n/a | usage error or any error from section 12.7 (output file cannot be trusted) | n/a |
 | `pqav-verify` | `AUTENTICO`, or `SIN_FIRMAR` with `--no-expect-signed` | `RECHAZADO` | `ERROR_ENTRADA`, usage error, or `--json` could not be written | `SIN_FIRMAR` |
-||||||
+
 
 For `pqav-verify`, `ERROR_ENTRADA` occurs in these cases and only in these: the file or the public key cannot be read; the public key does not measure 1,312 B; the file does not measure a multiple of 188 bytes or some packet does not start with 0x47; there is no valid PAT or PMT; the PAT has more than one program; the first valid PMT has an unsupported stream type, no video, or more than one video or audio. Everything else (broken PES, broken anchors, sections with bad CRC, packets with transport error) is handled within the verdict.
 
@@ -620,7 +619,7 @@ All errors go to standard error with the form `<program>: error: <message>` and,
 | `no hay unidades que firmar` | the file has no video frames | 2 | n/a |
 | `hueco de nulos insuficiente: más de 3 anclas esperando (nulos medidos: <n> kb/s)` | section 9.3 | 2 | n/a |
 | `error al firmar` | `try_sign` fails (should never happen) | 2 | n/a |
-|||||
+
 
 If when programming you need a message that is not in this table, it means you have found a case that the document does not cover: add it here before programming it.
 
@@ -666,7 +665,7 @@ The zeros are the placeholders for the values that depend on your execution. Wit
 | `null_packets_in` | integer | null packets in the input |
 | `null_packets_used` | integer | nulls substituted by anchor packets |
 | `bitrate_bps` | integer | the value of `--bitrate` |
-||||
+
 
 No field is `null`: the signer only writes the JSON if it finishes well. Checks that must always add up: `null_packets_used` + `appended_packets` = sum of packets of all anchors = `ts_packets_per_anchor.mean` × `anchors` (rounding).
 
@@ -707,7 +706,7 @@ Top-level fields:
 | `unreadable_pes` | integer | video or audio PES that could not be read (section 10.2, point 4) | never |
 | `final_anchor` | boolean | there is a valid anchor with `final = true` | never |
 | `verify_us` | object | `p50` and `p99` in µs (integers) of the `cose::verify` time, measured in all anchors where it was called | if it hasn't been called at all (`SIN_FIRMAR`, `ERROR_ENTRADA`) |
-|||||
+
 
 With `ERROR_ENTRADA`, all counters go to 0, lists empty, and `final_anchor` to `false`.
 
@@ -725,7 +724,7 @@ Fields of each interval:
 | `audio_ok`, `audio_total` | integer | same for audio | never |
 | `modified` | list of `{"comp": integer, "pts": integer}` | MODIFICADA units, in the order of the anchor's list; absolute `pts`, already with `mod 2^33` | never (empty list) |
 | `missing` | list of `{"comp": integer, "pts": integer}` | FALTA units, same | never (empty list) |
-|||||
+
 
 The names of the verdicts and the global one go in uppercase and without accents, exactly as in sections 10.3 and 10.4. The test scripts compare these texts letter by letter.
 
