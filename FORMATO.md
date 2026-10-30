@@ -2,19 +2,19 @@
 
 | Parameter | Value | Comment |
 |---|---|---|
-| Signatures PID | 0x1FF0 | default value for the `--anchor-pid` option (section 12); tests use 0x1FF0. Supported values: 0x0010 to 0x1FFE |
+| Signatures PID | 0x1FF0 | default value for the `--anchor-pid` option (section 10); tests use 0x1FF0. Supported values: 0x0010 to 0x1FFE |
 | Signatures PES `stream_id` | 0xBD (`private_stream_1`) | |
-| PMT `stream_type` | 0x06 (PES with private data) | added by TSDuck after signing (section 9.4) |
-| `registration_descriptor` `format_identifier` | 0x50514156 ("PQAV") | provisional. On Fri Oct 9, before freezing the format, search "PQAV" in the SMPTE-RA public identifiers list (smpte-ra.org). If it is taken, choose another 4-uppercase-letter one, change it in this table, in section 9.4 and in `scripts/sign.sh`, and note it in the data sheet (06, section E) |
-| Video frames per anchor | 6 | the last interval may have fewer (section 6, point 6) |
+| PMT `stream_type` | 0x06 (PES with private data) | added by TSDuck after signing (section 7.4) |
+| `registration_descriptor` `format_identifier` | 0x50514156 ("PQAV") | provisional. On Fri Oct 9, before freezing the format, search "PQAV" in the SMPTE-RA public identifiers list (smpte-ra.org). If it is taken, choose another 4-uppercase-letter one, change it in this table, in section 7.4 and in `scripts/sign.sh`, and note it in the data sheet (06, section E) |
+| Video frames per anchor | 6 | the last interval may have fewer (section 4, point 6) |
 | Hash | SHA-256 | |
-| Signature | ML-DSA-44, deterministic, empty context | RFC 9964 requires the empty context; being deterministic is an MVP decision (section 8) |
+| Signature | ML-DSA-44, deterministic, empty context | RFC 9964 requires the empty context; being deterministic is an MVP decision (section 6) |
 | COSE Algorithm | −48 | ML-DSA-44 according to RFC 9964 |
 | COSE_Sign1 CBOR tag | 18 | |
 | PTS Clock | 90 kHz, 33 bits | |
 | AAC frame duration | 1,024 samples = 1,920 PTS ticks at 48 kHz | any other frequency is an error |
-| Anchors that can wait in queue | 3 | if more, the signer stops (section 9.3) |
-| Maximum `rel` | 2^20 = 1,048,576 ticks (about 11.6 s) | if more, the signer stops (section 6) |
+| Anchors that can wait in queue | 3 | if more, the signer stops (section 7.3) |
+| Maximum `rel` | 2^20 = 1,048,576 ticks (about 11.6 s) | if more, the signer stops (section 4) |
 
 ---
 
@@ -35,7 +35,7 @@ flowchart LR
 ### 2.1 H.264 Video
 
 1. An unit is the payload of a video PID PES. `ffmpeg` writes one frame per PES. If a PES has more than one NAL of type 9 (AUD), the program stops with `más de un access unit por PES`.
-2. Unit PTS: the PTS from the PES header. If the PES does not have it, the signer stops with `PES de vídeo sin PTS` (the verifier counts it as an unreadable PES, section 14).
+2. Unit PTS: the PTS from the PES header. If the PES does not have it, the signer stops with `PES de vídeo sin PTS` (the verifier counts it as an unreadable PES, section 12).
 3. `enc_v(AU)`, the canonical form of the frame:
    1. Split the frame into NALs by the `00 00 01` start codes. When the code is 4 bytes (`00 00 00 01`), the first `00` belongs to the code, not the previous NAL.
    2. If there is any byte other than 0x00 before the first start code, the program stops with `datos antes del primer código de inicio`.
@@ -60,12 +60,12 @@ length 5    SPS              length 4    PPS           length 3    slice without
 
 and the hash is `f210c6e5cf4b27796a96271f89134e5905b8f52d2cc94cd5b49779ea6dffcac1`.
 
-The AUD is gone, and the slice has lost its two trailing zeros. A common mistake is removing only one zero, or none, and leaving the length at 4 or 5. Use this same example as an unit test (U4 in document 04).
+The AUD is gone, and the slice has lost its two trailing zeros. A common mistake is removing only one zero, or none, and leaving the length at 4 or 5. Use this same example as an unit test (U4).
 
 ### 2.2 AAC Audio in ADTS
 
 1. An unit is an ADTS frame. An audio PES may carry several (`ffmpeg` PES carry about 8); they are traversed one by one by advancing `frame_length` bytes each time, starting from the first byte of the PES payload. Synchronization is not searched for: the first frame starts at byte 0 and each subsequent one starts where the previous one ends.
-2. Header rules (how to read each field, in section 6 of document 01):
+2. Header rules (how to read each field, in the ADTS header format):
 
    | Field | Rule | Message if not met |
    |---|---|---|
@@ -85,7 +85,7 @@ The AUD is gone, and the slice has lost its two trailing zeros. A common mistake
 4. `enc_a(frame)` = 3 bytes `[profile, sampling_frequency_index, channel_configuration]` (each in one byte, with its numerical value) followed by the frame data (from the end of the header up to `frame_length`).
 5. Hash = `SHA-256( 0x02 ‖ enc_a(frame) )`.
 
-Example: a stereo AAC LC frame at 48 kHz has `profile` 1, `sampling_frequency_index` 3, and `channel_configuration` 2, so `enc_a` starts with `01 03 02` and continues with the data. The complete header decoded field by field is in section 6.1 of document 01.
+Example: a stereo AAC LC frame at 48 kHz has `profile` 1, `sampling_frequency_index` 3, and `channel_configuration` 2, so `enc_a` starts with `01 03 02` and continues with the data. The complete header decoded field by field is in the ADTS header decoding.
 
 ### 2.3 Subtracting PTS without mistakes
 
@@ -142,7 +142,7 @@ flowchart LR
 5. Relative PTS of each unit: `rel = dif(pts, base)`. It is always ≥ 0. If any exceeds 2^20 (about 11.6 s), the program stops with `intervalo demasiado largo`.
 6. The last interval may have fewer than 6 video units if the number of frames in the file is not a multiple of 6. It is valid and verified just like the others. With the 60 s file this doesn't happen (1,500 = 250 × 6); with the 10 s sample (250 frames) there are 42 anchors, 41 with 6 frames and the last one with 4.
 
-Why the minimum PTS is used and not the first one: with *B-frames* (document 01, section 4.3), some frame of the 6 may have a lower PTS than the first one that arrived.
+Why the minimum PTS is used and not the first one: with *B-frames* (due to B-frames), some frame of the 6 may have a lower PTS than the first one that arrived.
 
 With the test file (60 s, 25 fps) there are 250 anchors: 1,500 frames ÷ 6.
 
@@ -162,7 +162,7 @@ A CBOR map of 7 pairs, with the keys in order 1 to 7, integers always in their s
 | 2 | `stream_id` | bytes | 16 B | random; one for each execution of `pqav-sign` (a "session") |
 | 3 | `counter` | integer | 1–2 B (up to 3 above 255) | 0 in the first anchor; goes up by 1 |
 | 4 | `prev` | bytes | 32 B | SHA-256 of the complete bytes of the COSE_Sign1 of the previous anchor. In the first one, 32 zero bytes |
-| 5 | `components` | list of `[integer, text, integer]` | ≈ 14 B | the map from section 5 |
+| 5 | `components` | list of `[integer, text, integer]` | ≈ 14 B | the map from section 3 |
 | 6 | `units` | list of `[integer, integer, bytes]` | 39 B per unit (37 if `rel` = 0; 41 if `rel` ≥ 65,536) | `[component, rel, hash]` in the order they entered the interval |
 | 7 | `final` | boolean | 1 B | `true` only in the last anchor |
 
@@ -200,7 +200,7 @@ How the bytes of `counter` and `rel` change according to the value:
 | `rel` 65,536 or more | `1A 00 01 00 00` … | 5 B (41 B) |
 
 
-A complete entry of `units`, that of the video unit from the example in section 4.1 with `rel` = 20,000:
+A complete entry of `units`, that of the video unit from the example in section 2.1 with `rel` = 20,000:
 
 ```
 83                                   list of 3
@@ -208,7 +208,7 @@ A complete entry of `units`, that of the video unit from the example in section 
 19 4E 20                             rel = 20,000
 58 20                                bstr of 32 bytes
 F2 10 C6 E5 CF 4B 27 79 6A 96 27 1F 89 13 4E 59
-05 B8 F5 2D 2C C9 4C D5 B4 97 79 EA 6D FF CA C1   the hash from the example in section 4.1
+05 B8 F5 2D 2C C9 4C D5 B4 97 79 EA 6D FF CA C1   the hash from the example in section 2.1
 ```
 
 39 bytes in total: 1 + 1 + 3 + 2 + 32.
@@ -221,8 +221,8 @@ F2 10 C6 E5 CF 4B 27 79 6A 96 27 1F 89 13 4E 59
 | Complete COSE_Sign1 | 2,746 B (2,745) | ≈ 3,192 B on average |
 
 
-The COSE always measures the payload plus 2,444 bytes (with the single exception described in section 8, which doesn't occur with these files). If your averages deviate by more than 5%, there is an error.
-The breakdown is in section 8.3 of document 05.
+The COSE always measures the payload plus 2,444 bytes (with the single exception described in section 6, which doesn't occur with these files). If your averages deviate by more than 5%, there is an error.
+The breakdown is in the expected sizes.
 
 ---
 
@@ -233,14 +233,14 @@ D2                                     tag 18 (COSE_Sign1)
 84                                     list of 4 elements
   44 A1 01 38 2F                       1. protected header: bstr containing {1: -48}
   A1 04 48 <8 bytes>                   2. unprotected header: {4: kid}
-  59 LL LL <payload>                   3. payload: bstr with the map from section 7
+  59 LL LL <payload>                   3. payload: bstr with the map from section 5
   59 09 74 <2,420 bytes>               4. signature ML-DSA-44
 ```
 
 - `kid` = the first 8 bytes of `SHA-256(public key)`, with the public key being the 1,312 bytes of the `.pub` file.
 - `LL LL` is the payload length in 2 bytes: `01 2E` for 302 B, `02 EC` for 748 B. With the files in this guide, the payload is always between 256 and 65,535 bytes, so it always goes with `59`. Only the last interval of a file without audio, if it has 4 frames or less, goes below 256 B: then the length goes in 1 byte (`58 LL`) and that COSE measures the payload plus 2,443. `minicbor` chooses the single form; nothing needs to be programmed separately.
 - The 2,444 bytes that the COSE adds to the payload are: `D2 84` (2), protected header (5), unprotected header with the `kid` (11), payload header `59 LL LL` (3), signature header `59 09 74` (3), and the signature (2,420).
-- The signature is calculated over this CBOR list, which wraps the payload (`Sig_structure`, section 4.4 of RFC 9052):
+- The signature is calculated over this CBOR list, which wraps the payload (`Sig_structure`, section 2.4 of RFC 9052):
 
   ```
   84                                   list of 4
@@ -275,7 +275,7 @@ flowchart TD
 | *flags* 1 | `80` |
 | *flags* 2 | `80` (PTS only) |
 | `PES_header_data_length` | `05` |
-| PTS | the interval base (section 6, point 4), in 5 bytes with the prefix `0010` |
+| PTS | the interval base (section 4, point 4), in 5 bytes with the prefix `0010` |
 | data | the COSE_Sign1 |
 
 
@@ -334,7 +334,7 @@ Rules:
 
 - Every non-null packet is copied without touching a single bit.
 - A null is substituted if there is something in the queue; otherwise, it is copied.
-- The output file has the same number of packets as the input file, plus those remaining in the queue at the end (at a minimum, those of the last anchor, which is closed at the end of the file). `pqav-sign` tells how many it appended (`appended_packets`, section 13.1).
+- The output file has the same number of packets as the input file, plus those remaining in the queue at the end (at a minimum, those of the last anchor, which is closed at the end of the file). `pqav-sign` tells how many it appended (`appended_packets`, section 11.1).
 - The queue counts anchors, not packets: an anchor is "waiting" as long as it has any packet left to write. Right after putting a new anchor into the queue, if there are more than 3 waiting (that is, 4 or more), the signer stops with `hueco de nulos insuficiente` and indicates the null bitrate measured up to that point. At the end of the file this check is not done: what is left is appended at the end.
 
 ### 7.4 Declaring the PID in the PMT
@@ -347,7 +347,7 @@ tsp -I file firmado_raw.ts \
     -O file firmado.ts
 ```
 
-It doesn't break anything because the signed map excludes the signatures entry (section 5, step 2). TSDuck does not change the PMT version (`--increment-version` would be needed), so it remains 0. The resulting PMT, byte for byte, is in section 3.3 of document 01.
+It doesn't break anything because the signed map excludes the signatures entry (section 3, step 2). TSDuck does not change the PMT version (`--increment-version` would be needed), so it remains 0. The resulting PMT, byte for byte, is in the PMT structure.
 
 ---
 
@@ -373,18 +373,18 @@ flowchart TD
     UF -- no --> OK["AUTENTICO"]
 ```
 
-The drawing summarizes the order of checks. In the program, an anchor that passes A1 to A4 is checked entirely (A5 to A8 and all its units) even if some fail, and the interval verdict is the one with the highest priority of those that come out (section 10.3). This way its units are marked as covered and do not come out as `NO_FIRMADA`.
+The drawing summarizes the order of checks. In the program, an anchor that passes A1 to A4 is checked entirely (A5 to A8 and all its units) even if some fail, and the interval verdict is the one with the highest priority of those that come out (section 8.3). This way its units are marked as covered and do not come out as `NO_FIRMADA`.
 
 ### 8.1 Checks for each anchor
 
-| # | Check | If it fails | `detail` in JSON (section 13.2) |
+| # | Check | If it fails | `detail` in JSON (section 11.2) |
 |---|---|---|---|
 | A1 | Well-formed COSE: tag 18, list of 4, protected header exactly `A1 01 38 2F`, unprotected header `{4: 8 B kid}`, 2,420 B signature, nothing leftover, and rewriting the envelope gives the same bytes. Also fails if the anchor's PES cannot be read or has no PTS | `FIRMA_INVALIDA` | `COSE mal formado` or `PES de ancla ilegible` |
 | A2 | the `kid` matches that of the public key passed to it | `FIRMA_INVALIDA` | `kid desconocido` |
 | A3 | the ML-DSA-44 signature is valid over the `Sig_structure` (if the signature doesn't even decode, A3 also fails) | `FIRMA_INVALIDA` | `firma no válida` |
 | A4 | the payload is canonical: decoding it and re-encoding it gives the same bytes; keys 1 to 7 are present and no others; `version` = 1; 16 B `stream_id`, 32 B `prev`, each hash 32 B, each language 0 or 3 characters; each `comp` is less than the number of components; nothing is leftover | `FIRMA_INVALIDA` | `carga no canónica` |
 | A5 | the `stream_id` is the same as the first valid anchor | `EMPALME` | `stream_id distinto` |
-| A6 | the `counter` is the expected one (section 10.2, point 5) | if it's greater: `HUECO` (missing anchors) and it continues; if it's smaller: `EMPALME` | `contador hacia atrás` (only if it's smaller) |
+| A6 | the `counter` is the expected one (section 8.2, point 5) | if it's greater: `HUECO` (missing anchors) and it continues; if it's smaller: `EMPALME` | `contador hacia atrás` (only if it's smaller) |
 | A7 | `prev` = SHA-256 of the previous COSE. Only checked if there was no gap and if the previous anchor passed A1–A4 | `EMPALME` | `prev no coincide` |
 | A8 | `components` is equal to the calculated map of each PMT version that appears in the file | `MAPA_ALTERADO` | `mapa distinto del de la PMT` |
 
@@ -395,14 +395,14 @@ Why A7 has that exception: if the previous anchor arrived corrupted (test P12), 
 
 ### 8.2 Checking units
 
-1. The verifier calculates all received units (component, PTS, and hash) with the same rules from section 4.
+1. The verifier calculates all received units (component, PTS, and hash) with the same rules from section 2.
 2. For each unit listed in an anchor that passed A1–A4, the expected PTS is `(PES PTS of the anchor + rel) mod 2^33`. It searches for a received unit with that component and that PTS:
    - if it exists and the hash matches: OK;
    - if it exists and the hash does not match: MODIFICADA;
    - if it does not exist: FALTA.
 3. Received units that do not appear in any valid anchor are NO_FIRMADA. If two units arrive with the same component and the same PTS, only the first one is searched for; the other remains as NO_FIRMADA.
-4. A video or audio PES that cannot be read (cut, with a broken ADTS header, without PTS) does not stop the verifier: it produces no units, is counted in `unreadable_pes`, and the ones the anchor expected come out as FALTA. The same with a broken anchor PES: it comes out as `FIRMA_INVALIDA`. The verifier only stops with `ERROR_ENTRADA` if it does not understand the file in general (section 12.6).
-5. Expected counter. An invalid anchor still occupies its counter number, so the expected one for a valid anchor is that of the last valid one plus 1, and plus 1 for each invalid anchor that has arrived between the two. For the first valid anchor, the expected is the number of invalid anchors that arrived before it (0 if the first one arrives well). Thus, if someone cuts the beginning of the file, the first anchor that remains carries a counter greater than the expected one and comes out as `HUECO`. The number of missing anchors (received counter minus expected) goes in `gap_before` (section 13.2).
+4. A video or audio PES that cannot be read (cut, with a broken ADTS header, without PTS) does not stop the verifier: it produces no units, is counted in `unreadable_pes`, and the ones the anchor expected come out as FALTA. The same with a broken anchor PES: it comes out as `FIRMA_INVALIDA`. The verifier only stops with `ERROR_ENTRADA` if it does not understand the file in general (section 10.6).
+5. Expected counter. An invalid anchor still occupies its counter number, so the expected one for a valid anchor is that of the last valid one plus 1, and plus 1 for each invalid anchor that has arrived between the two. For the first valid anchor, the expected is the number of invalid anchors that arrived before it (0 if the first one arrives well). Thus, if someone cuts the beginning of the file, the first anchor that remains carries a counter greater than the expected one and comes out as `HUECO`. The number of missing anchors (received counter minus expected) goes in `gap_before` (section 11.2).
 
 ### 8.3 Verdict of each interval (the one with the highest priority wins)
 
@@ -424,7 +424,7 @@ Why A7 has that exception: if the previous anchor arrived corrupted (test P12), 
 |---|---|---:|
 | `AUTENTICO` | all intervals `AUTENTICO`, no `HUECO`, no `NO_FIRMADA` and there is a valid anchor with `final = true` | 0 |
 | `RECHAZADO` | any other case with at least one received anchor; reasons are listed | 1 |
-| `ERROR_ENTRADA` | the file does not meet section 2 (e.g., audio at 44.1 kHz in the PMT, two programs) or cannot be read; full list in section 12.6 | 2 |
+| `ERROR_ENTRADA` | the file does not meet the README (What it is not) (e.g., audio at 44.1 kHz in the PMT, two programs) or cannot be read; full list in section 10.6 | 2 |
 | `SIN_FIRMAR` | there is no signatures PID or no anchor arrives | 3 |
 | `SIN_FIRMAR` with `--no-expect-signed` | same, but the user has said the source might not sign: just warns | 0 |
 
@@ -435,7 +435,7 @@ Example of how it is built: if interval 10 comes out `FIRMA_INVALIDA`, 11 `AUTEN
 
 ### 8.5 Output example
 
-The values are illustrative, but they have the shape you will see with the test file (section 6). The exact format of each line is in section 12.5.
+The values are illustrative, but they have the shape you will see with the test file (section 4). The exact format of each line is in section 10.5.
 
 ```
 #0000 base=00000126000 video 6/6 audio 0/0 AUTENTICO
@@ -458,13 +458,13 @@ They go exactly as is into the MVP README and the data sheet (06, section E):
 - Identical frames from another signed session have the same hash. What detects the splice is the `stream_id` (A5) and `prev` (A7, the `prev` of the first anchor of the other session is not the hash of the previous anchor). The counter does not detect it: in P8 it remains in order.
 - The private key is in a file, without any protection.
 - Only H.264 and AAC at 48 kHz, one program.
-- The signature is deterministic so that the tests are reproducible. In the project design, the device signs with the variant with added randomness (*hedged*; section 2.6 of `docs/03` of the dossier). Both are valid ML-DSA and the verifier does not distinguish one from the other.
+- The signature is deterministic so that the tests are reproducible. In the project design, the device signs with the variant with added randomness (*hedged*; the README (What it is not).6 of `docs/03` of the dossier). Both are valid ML-DSA and the verifier does not distinguish one from the other.
 
 ---
 
 ## 10. Interface of the three programs
 
-Options are read with `clap` (document 03, section 6.1). All three accept `--help` and `--version`. A PID number can be written in hexadecimal (`0x1FF0`) or decimal (`8176`). If a mandatory option is missing or there is an extra one, `clap` prints the usage and the program exits with code 2.
+Options are read with `clap` (using clap). All three accept `--help` and `--version`. A PID number can be written in hexadecimal (`0x1FF0`) or decimal (`8176`). If a mandatory option is missing or there is an extra one, `clap` prints the usage and the program exits with code 2.
 
 ### 10.1 `pqav-keygen`
 
@@ -507,8 +507,8 @@ To view a key by hand: `cat testdata/fuente.seed` shows the 64 characters; `stat
 | `--out <file.ts>` | mandatory | output TS (normally `…_raw.ts`, without the PMT entry; added by `sign.sh`). If it exists, it is overwritten |
 | `--anchor-pid <PID>` | `0x1FF0` | PID where the anchors go; must be between 0x0010 and 0x1FFE |
 | `--bitrate <bit/s>` | `8000000` | bitrate of the input TS. Only used to convert the insertion delay to milliseconds and the null bitrate to kb/s |
-| `--stats <file.json>` | none | writes the statistics from section 13.1. Without this option JSON is not written |
-| `--debug-unit <comp>:<pts>` | none | optional, for debugging only: prints to standard error the hash of that unit (document 07, section 4). Tests do not use it |
+| `--stats <file.json>` | none | writes the statistics from section 11.1. Without this option JSON is not written |
+| `--debug-unit <comp>:<pts>` | none | optional, for debugging only: prints to standard error the hash of that unit (for debugging). Tests do not use it |
 
 
 Console output if everything goes well (code 0), a single line:
@@ -527,7 +527,7 @@ With `entrada.ts` it should say 250 anchors, 1500 video units, about 2812 audio 
 | `--in <file.ts>` | mandatory | TS to be verified |
 | `--anchor-pid <PID>` | `0x1FF0` | anchors PID if the PMT does not declare one with the "PQAV" registration. If the PMT declares it, the PMT rules (that's why P2 works) |
 | `--no-expect-signed` | disabled | if there are no signatures, exits with code 0 and a warning instead of code 3 |
-| `--json <file.json>` | none | writes the result from section 13.2. Also written with `SIN_FIRMAR` and with `ERROR_ENTRADA` (except for `clap` usage errors) |
+| `--json <file.json>` | none | writes the result from section 11.2. Also written with `SIN_FIRMAR` and with `ERROR_ENTRADA` (except for `clap` usage errors) |
 | `--quiet` | disabled | prints only the `RESULTADO:` line |
 | `--debug-unit <comp>:<pts>` | none | optional, for debugging only: prints to standard error the calculated hash of that unit. Tests do not use it |
 
@@ -544,7 +544,7 @@ Interval with valid anchor:
 
 - `<ok>` counts the listed units that have come out OK; `<total>`, the listed ones. With `video 6/6 audio 5/8`, the anchor lists 6 frames and 8 frames and 3 frames are not ok.
 - The detail, separated by two spaces, only appears if there is something to report, in this order and separated by `; `:
-  - `detail` from section 10.1 if any (e.g., `stream_id distinto`);
+  - `detail` from section 8.1 if any (e.g., `stream_id distinto`);
   - `HUECO: faltan <n> anclas antes de esta` if `gap_before` > 0;
   - `<vídeo|audio>: <n> modificadas (pts a, b, c)` with at most the first 3 PTS;
   - `<vídeo|audio>: <n> faltan (pts a, b, c)`, same.
@@ -566,14 +566,14 @@ RESULTADO: <GLOBAL>  intervalos=<n> autenticos=<n> [firmas_invalidas=<n>] [empal
 The counters in brackets only appear if they are greater than 0. With `SIN_FIRMAR` the line is
 `RESULTADO: SIN_FIRMAR  no hay firmas en el fichero`, and with `--no-expect-signed` it is preceded by
 `AVISO: el fichero no lleva firmas y se ha pedido no exigirlas` (except with `--quiet`, which only prints the `RESULTADO:` line; the exit code, 0, already says it is a warning). With `ERROR_ENTRADA` it is
-`RESULTADO: ERROR_ENTRADA  <message from section 12.7>`.
+`RESULTADO: ERROR_ENTRADA  <message from section 10.7>`.
 
 ### 10.6 Exit codes
 
 | Program | 0 | 1 | 2 | 3 |
 |---|---|---|---|---|
 | `pqav-keygen` | keys written | n/a | usage error, file already exists, error writing | n/a |
-| `pqav-sign` | file signed | n/a | usage error or any error from section 12.7 (output file cannot be trusted) | n/a |
+| `pqav-sign` | file signed | n/a | usage error or any error from section 10.7 (output file cannot be trusted) | n/a |
 | `pqav-verify` | `AUTENTICO`, or `SIN_FIRMAR` with `--no-expect-signed` | `RECHAZADO` | `ERROR_ENTRADA`, usage error, or `--json` could not be written | `SIN_FIRMAR` |
 
 
@@ -588,8 +588,8 @@ All errors go to standard error with the form `<program>: error: <message>` and,
 | `no se puede leer <path>: <detail>` | the file does not exist or there is no permission | 2 | 2 |
 | `no se puede escribir <path>: <detail>` | the folder does not exist or there is no permission | 2 | 2 (only `--json`; it is not `ERROR_ENTRADA`: the verdict is already calculated and printed anyway) |
 | `el fichero <path> ya existe (usa --force para sobrescribirlo)` | `pqav-keygen` without `--force` | n/a | n/a |
-| `semilla inválida en <path>: tienen que ser 64 caracteres hexadecimales` | section 12.2 | 2 | n/a |
-| `clave pública inválida en <path>: mide <n> bytes y tiene que medir 1312` | section 12.2 | n/a | 2 |
+| `semilla inválida en <path>: tienen que ser 64 caracteres hexadecimales` | section 10.2 | 2 | n/a |
+| `clave pública inválida en <path>: mide <n> bytes y tiene que medir 1312` | section 10.2 | n/a | 2 |
 | `el fichero no mide un múltiplo de 188 bytes` | size of the TS | 2 | 2 |
 | `paquete sin sincronía` | a packet does not start with 0x47 | 2 | 2 |
 | `paquete con error de transporte` | `transport_error_indicator` bit is 1 | 2 | verdict: the packet is ignored |
@@ -599,25 +599,25 @@ All errors go to standard error with the form `<program>: error: <message>` and,
 | `tabla inesperada: table_id 0x<id> en la tabla del PID 0x<pid>` | a section of another type arrives on the PAT or PMT PID | 2 | verdict: the section is ignored |
 | `no se ha encontrado la PAT o la PMT` | the file ends without a valid PAT and PMT | 2 | 2 |
 | `el MVP solo admite un programa` | the PAT lists more than one program (not counting 0) | 2 | 2 |
-| `tipo de flujo no admitido: 0x<type> en el PID 0x<pid>` | section 5, step 3 | 2 | 2 |
-| `la PMT no tiene un vídeo H.264` | section 5, step 3 | 2 | 2 |
-| `la PMT tiene más de un vídeo o más de un audio` | section 5, step 3 | 2 | 2 |
+| `tipo de flujo no admitido: 0x<type> en el PID 0x<pid>` | section 3, step 3 | 2 | 2 |
+| `la PMT no tiene un vídeo H.264` | section 3, step 3 | 2 | 2 |
+| `la PMT tiene más de un vídeo o más de un audio` | section 3, step 3 | 2 | 2 |
 | `la PMT cambia a mitad del fichero` | a later PMT gives another component map or other video or audio PIDs | 2 | verdict: A8 |
 | `el fichero ya está firmado` | the PMT has an entry with "PQAV" or with the `--anchor-pid` PID, or some packet uses that PID (also happens with a `firmado_raw.ts`) | 2 | n/a |
 | `PES sin código de inicio` | the PES does not start with `00 00 01` | 2 | verdict: unreadable PES |
 | `PES demasiado corto` | the PES does not reach its complete header | 2 | verdict: unreadable PES |
 | `PES de vídeo sin PTS`, `PES de audio sin PTS` | sections 4.1 and 4.2 | 2 | verdict: unreadable PES |
-| `datos antes del primer código de inicio` | section 4.1 | 2 | verdict: unreadable PES |
-| `más de un access unit por PES` | section 4.1 | 2 | verdict: unreadable PES |
-| `ADTS sin sincronía` | section 4.2 | 2 | verdict: unreadable PES |
-| `ADTS con layer distinto de 0` | section 4.2 | 2 | verdict: unreadable PES |
-| `audio que no es de 48 kHz (sampling_frequency_index <n>)` | section 4.2 | 2 | verdict: unreadable PES |
-| `ADTS con varios bloques por trama` | section 4.2 | 2 | verdict: unreadable PES |
-| `trama ADTS cortada` | section 4.2 | 2 | verdict: unreadable PES |
-| `unidad repetida: componente <c> y PTS <pts>` | two units with the same component and PTS (section 14) | 2 | verdict: the second one remains `NO_FIRMADA` |
-| `intervalo demasiado largo (rel = <n> tics)` | section 6, point 5 | 2 | n/a |
+| `datos antes del primer código de inicio` | section 2.1 | 2 | verdict: unreadable PES |
+| `más de un access unit por PES` | section 2.1 | 2 | verdict: unreadable PES |
+| `ADTS sin sincronía` | section 2.2 | 2 | verdict: unreadable PES |
+| `ADTS con layer distinto de 0` | section 2.2 | 2 | verdict: unreadable PES |
+| `audio que no es de 48 kHz (sampling_frequency_index <n>)` | section 2.2 | 2 | verdict: unreadable PES |
+| `ADTS con varios bloques por trama` | section 2.2 | 2 | verdict: unreadable PES |
+| `trama ADTS cortada` | section 2.2 | 2 | verdict: unreadable PES |
+| `unidad repetida: componente <c> y PTS <pts>` | two units with the same component and PTS (section 12) | 2 | verdict: the second one remains `NO_FIRMADA` |
+| `intervalo demasiado largo (rel = <n> tics)` | section 4, point 5 | 2 | n/a |
 | `no hay unidades que firmar` | the file has no video frames | 2 | n/a |
-| `hueco de nulos insuficiente: más de 3 anclas esperando (nulos medidos: <n> kb/s)` | section 9.3 | 2 | n/a |
+| `hueco de nulos insuficiente: más de 3 anclas esperando (nulos medidos: <n> kb/s)` | section 7.3 | 2 | n/a |
 | `error al firmar` | `try_sign` fails (should never happen) | 2 | n/a |
 
 
@@ -649,14 +649,14 @@ Both JSONs are written with `serde_json` in UTF-8, with the keys in the order of
 }
 ```
 
-The zeros are the placeholders for the values that depend on your execution. With `entrada.ts`, what should come out roughly is in section 8.3 of document 05: `payload_bytes.mean` ≈ 748, `cose_bytes.mean` ≈ 3,192, `ts_packets_per_anchor.mean` ≈ 17.8, and `appended_packets` between 17 and 22 (section 12.3). The minimum of `payload_bytes` is that of the first anchor, which carries no audio (308 B: 1-byte `counter` and 6 frames), and its anchor occupies 16 packets.
+The zeros are the placeholders for the values that depend on your execution. With `entrada.ts`, what should come out roughly is in the expected sizes: `payload_bytes.mean` ≈ 748, `cose_bytes.mean` ≈ 3,192, `ts_packets_per_anchor.mean` ≈ 17.8, and `appended_packets` between 17 and 22 (section 10.3). The minimum of `payload_bytes` is that of the first anchor, which carries no audio (308 B: 1-byte `counter` and 6 frames), and its anchor occupies 16 packets.
 
 | Field | Type | What it is |
 |---|---|---|
 | `anchors` | integer | signed anchors (= intervals) |
 | `video_units`, `audio_units` | integer | signed units of each type |
-| `payload_bytes` | object | CBOR payload size (section 7): `mean` (number with 2 decimals), `min` and `max` (integers) |
-| `cose_bytes` | object | size of the COSE_Sign1, same as above. Always `payload_bytes` + 2,444 (except for the exception in section 8, which does not occur with the files in the guide) |
+| `payload_bytes` | object | CBOR payload size (section 5): `mean` (number with 2 decimals), `min` and `max` (integers) |
+| `cose_bytes` | object | size of the COSE_Sign1, same as above. Always `payload_bytes` + 2,444 (except for the exception in section 6, which does not occur with the files in the guide) |
 | `ts_packets_per_anchor` | object | TS packets of each anchor (output of `packetize`), same as above; `mean` with 2 decimals |
 | `appended_packets` | integer | packets that didn't fit in nulls and were appended at the end |
 | `insert_delay_ms` | object | insertion delay in ms, `p50` and `p99` with 1 decimal. For each anchor: (position in output of its last packet − position in input of the packet that closed its interval) × 188 × 8 ÷ `bitrate_bps` × 1,000. The final anchor closes at position N (number of input packets) and its packets are counted as if they followed at N, N+1… |
@@ -696,14 +696,14 @@ Top-level fields:
 
 | Field | Type | What it is | When it is `null` |
 |---|---|---|---|
-| `global` | text | `AUTENTICO`, `RECHAZADO`, `ERROR_ENTRADA` or `SIN_FIRMAR` (section 10.4) | never |
-| `reasons` | list of texts | reasons in the order of section 10.4 | never (empty list if none) |
-| `error` | text | the message from section 12.7 that caused `ERROR_ENTRADA` | whenever `global` is not `ERROR_ENTRADA` |
+| `global` | text | `AUTENTICO`, `RECHAZADO`, `ERROR_ENTRADA` or `SIN_FIRMAR` (section 8.4) | never |
+| `reasons` | list of texts | reasons in the order of section 8.4 | never (empty list if none) |
+| `error` | text | the message from section 10.7 that caused `ERROR_ENTRADA` | whenever `global` is not `ERROR_ENTRADA` |
 | `anchors` | integer | anchor PES received, valid or not | never (0 if none) |
 | `intervals` | list | one object per anchor PES, in order of arrival | never (empty list if none) |
 | `received_units` | object | units received and read: `video` and `audio` (integers) | never |
 | `unsigned_units` | integer | received units that no valid anchor lists (NO_FIRMADA). With `SIN_FIRMAR`, all received | never |
-| `unreadable_pes` | integer | video or audio PES that could not be read (section 10.2, point 4) | never |
+| `unreadable_pes` | integer | video or audio PES that could not be read (section 8.2, point 4) | never |
 | `final_anchor` | boolean | there is a valid anchor with `final = true` | never |
 | `verify_us` | object | `p50` and `p99` in µs (integers) of the `cose::verify` time, measured in all anchors where it was called | if it hasn't been called at all (`SIN_FIRMAR`, `ERROR_ENTRADA`) |
 
@@ -717,8 +717,8 @@ Fields of each interval:
 | `index` | integer | anchor position in order of arrival, from 0 | never |
 | `counter` | integer | `counter` of the payload | if the verdict is `FIRMA_INVALIDA` |
 | `base` | integer | PTS of the anchor PES | if that PES had no PTS |
-| `verdict` | text | one of the six from section 10.3 | never |
-| `detail` | text | specific reason from section 10.1 | if the verdict is `MANIPULADO`, `INCOMPLETO` or `AUTENTICO` |
+| `verdict` | text | one of the six from section 8.3 | never |
+| `detail` | text | specific reason from section 8.1 | if the verdict is `MANIPULADO`, `INCOMPLETO` or `AUTENTICO` |
 | `gap_before` | integer | missing anchors right before this one (A6). 0 if none are missing or if `FIRMA_INVALIDA` | never |
 | `video_ok`, `video_total` | integer | listed video units that are ok, and listed in total. 0 and 0 with `FIRMA_INVALIDA` | never |
 | `audio_ok`, `audio_total` | integer | same for audio | never |
@@ -738,7 +738,7 @@ What each program does when the file deviates from normal. If you find a case th
 |---|---|---|
 | The file starts in the middle of a PES (the first packet of a PID doesn't have PUSI) | packets of that PID are ignored until the first PUSI; that chunk does not yield an unit and is not signed | same: ignored; doesn't count as unreadable PES |
 | The file ends in the middle of a PES | `finish()` delivers whatever there is. Video: signed as is. Audio: the last frame is cut and it stops with `trama ADTS cortada` | video: its hash is calculated, and if the anchor lists it, it will come out as MODIFICADA; audio: unreadable PES |
-| Video or audio packets before the first PMT | copied and ignored (section 5) | ignored |
+| Video or audio packets before the first PMT | copied and ignored (section 3) | ignored |
 | A PMT with bad CRC | stops (`CRC incorrecto…`) | that section is ignored; if no good PMT remains, `ERROR_ENTRADA` |
 | The PMT changes (another version) | if the component map or the video and audio PIDs are the same, it continues; if not, stops with `la PMT cambia a mitad del fichero` | keeps each distinct version (comparing the bytes of the section) and A8 compares the map of each anchor with all of them. Video, audio, and anchor PIDs are those of the first valid PMT |
 | Video or audio PES without PTS | stops | unreadable PES |
