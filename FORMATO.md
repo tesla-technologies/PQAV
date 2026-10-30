@@ -769,4 +769,4 @@ The code is dual-licensed under MIT OR Apache-2.0. Documentation and data are li
 
 ---
 
-© 2026 Tesla Technologies & Software S.L. All rights reserved.
+Copyright © 2026 Tesla Technologies & Software S.L. Licensed under MIT OR Apache-2.0.
