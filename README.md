@@ -89,7 +89,7 @@ Below is the summary of the test suite (`results/tests.csv`):
 | P1 | Intact file | AUTENTICO (0) | AUTENTICO (0) | yes |
 | P2 | PID remap | AUTENTICO (0) | AUTENTICO (0) | yes |
 | P3 | Remove nulls | AUTENTICO (0) | AUTENTICO (0) | yes |
-| P4 | ffmpeg -c copy | n/a | SIN_FIRMAR (3); PID de firmas: no | n/a |
+| P4 | ffmpeg -c copy | n/a | ERROR_ENTRADA (2), truncated file | n/a |
 | P5 | Audio changed 1s | RECHAZADO (1), MANIPULADO | RECHAZADO (1), MANIPULADO | yes |
 | P6 | Language changed | RECHAZADO (1), MAPA_ALTERADO | RECHAZADO (1), MAPA_ALTERADO | yes |
 | P7 | 1 video frame changed | RECHAZADO (1), MANIPULADO | RECHAZADO (1), MANIPULADO | yes |
@@ -182,7 +182,7 @@ Please refer to [`FORMATO.md`](FORMATO.md) for the detailed technical specificat
 
 - The signature is deterministic to allow reproducible tests. In the actual project design, the device signs with the hedged randomized variant. Both are valid ML-DSA and the verifier cannot distinguish between them.
 
-- Remultiplexing with `ffmpeg -c copy` discards the private signature PID, leaving the file unsigned (demonstrated in test P4).
+- Remultiplexing with `ffmpeg -c copy` does not discard the signatures PID, but it aborts with a "non monotonically increasing dts" error because the anchor PTS (the interval's minimum) is not strictly increasing due to B-frames. This leaves the output file truncated and unreadable.
 
 
 
