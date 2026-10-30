@@ -761,7 +761,6 @@ What each program does when the file deviates from normal. If you find a case th
 
 
 
-<br><br>
 
 ## Licence
 

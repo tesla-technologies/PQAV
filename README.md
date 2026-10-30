@@ -1,10 +1,10 @@
 # NLnet Restack: component-level post-quantum signing for MPEG-TS (MVP)
 ## What this is
-This MVP provides three command-line tools to secure MPEG-TS streams with post-quantum cryptography. 
+This MVP provides three command-line tools to authenticate with post-quantum cryptography. 
 
 - `pqav-keygen` generates ML-DSA-44 key pair in two files. 
 
-- `pqav-sign` reads a ts file, calculates the hash for each video frame and each audio track, signs a list of hashes every 6 frames, and inserts these signatures into the space occupied by null packets.
+- `pqav-sign` reads a ts file, calculates the hash for each video frame and each AAC audio frame, signs a list of hashes every 6 frames, and inserts these signatures into the space occupied by null packets.
 
 - `pqav-verify` reads a signed (perhaps tampered) ts file,  recalculates everything, verifies the signatures, and outputs a verdict for each 6-frame interval, as well as an overall verdict.
 
@@ -188,7 +188,6 @@ Please refer to [`FORMATO.md`](FORMATO.md) for the detailed technical specificat
 
 
 
-<br><br>
 
 ## Licence
 
