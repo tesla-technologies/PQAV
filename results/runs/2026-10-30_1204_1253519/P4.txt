@@ -1,0 +1,1 @@
+RESULTADO: ERROR_ENTRADA  tipo de flujo no admitido: 0x06 en el PID 0x0102

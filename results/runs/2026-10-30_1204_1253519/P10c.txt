@@ -1,0 +1,2 @@
+AVISO: el fichero no lleva firmas y se ha pedido no exigirlas
+RESULTADO: SIN_FIRMAR  no hay firmas en el fichero

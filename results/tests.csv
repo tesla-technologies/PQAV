@@ -2,7 +2,7 @@ id,descripcion,esperado_global,esperado_codigo,obtenido_global,obtenido_codigo,m
 P1,fichero intacto,AUTENTICO,0,AUTENTICO,0,,si
 P2,remapeo de PID,AUTENTICO,0,AUTENTICO,0,,si
 P3,quitar nulos,AUTENTICO,0,AUTENTICO,0,,si
-P4,ffmpeg -c copy,n/a,n/a,,2,,n/a
+P4,ffmpeg -c copy,n/a,n/a,ERROR_ENTRADA,2,,n/a
 P5,audio cambiado 1 s,RECHAZADO,1,RECHAZADO,1,MANIPULADO,si
 P6,etiqueta idioma cambiada,RECHAZADO,1,RECHAZADO,1,MAPA_ALTERADO,si
 P7,un frame cambiado,RECHAZADO,1,RECHAZADO,1,MANIPULADO,si

@@ -1,18 +1,18 @@
 	Command being timed: "./target/release/pqav-verify --pub testdata/fuente.pub --in testdata/firmado.ts --quiet"
 	User time (seconds): 0.05
 	System time (seconds): 0.09
-	Percent of CPU this job got: 99%
-	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:00.14
+	Percent of CPU this job got: 92%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:00.15
 	Average shared text size (kbytes): 0
 	Average unshared data size (kbytes): 0
 	Average stack size (kbytes): 0
 	Average total size (kbytes): 0
 	Maximum resident set size (kbytes): 62592
 	Average resident set size (kbytes): 0
-	Major (requiring I/O) page faults: 12
-	Minor (reclaiming a frame) page faults: 15600
-	Voluntary context switches: 12
-	Involuntary context switches: 1
+	Major (requiring I/O) page faults: 13
+	Minor (reclaiming a frame) page faults: 15601
+	Voluntary context switches: 13
+	Involuntary context switches: 2
 	Swaps: 0
 	File system inputs: 2104
 	File system outputs: 0

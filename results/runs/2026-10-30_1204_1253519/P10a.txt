@@ -1,0 +1,1 @@
+RESULTADO: SIN_FIRMAR  no hay firmas en el fichero

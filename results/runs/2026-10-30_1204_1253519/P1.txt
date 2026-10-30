@@ -1,0 +1,1 @@
+RESULTADO: AUTENTICO  intervalos=250 autenticos=250  motivos: ninguno
