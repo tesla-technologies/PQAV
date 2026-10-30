@@ -588,3 +588,14 @@ pub fn packetize(pes: &[u8], pid: u16, cc: &mut u8) -> Vec<[u8; 188]> {
 
     paquetes
 }
+
+pub fn parse_pid(s: &str) -> Result<u16, String> {
+    let p = match s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+        Some(h) => u16::from_str_radix(h, 16).map_err(|_| "PID inválido".to_string())?,
+        None => s.parse::<u16>().map_err(|_| "PID inválido".to_string())?,
+    };
+    if !(0x0010..=0x1FFE).contains(&p) {
+        return Err(format!("PID 0x{:04X} fuera de rango", p));
+    }
+    Ok(p)
+}

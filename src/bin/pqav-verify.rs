@@ -19,17 +19,6 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Instant;
 
-fn parse_pid(s: &str) -> Result<u16, String> {
-    let p = match s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
-        Some(h) => u16::from_str_radix(h, 16).map_err(|_| "PID inválido")?,
-        None => s.parse::<u16>().map_err(|_| "PID inválido")?,
-    };
-    if !(0x0010..=0x1FFE).contains(&p) {
-        return Err(format!("PID 0x{:04X} fuera de rango", p));
-    }
-    Ok(p)
-}
-
 #[derive(clap::Parser, Debug)]
 #[command(version, about = "Verifica un TS firmado (primera pasada)")]
 struct Args {
@@ -37,7 +26,7 @@ struct Args {
     pub_key: PathBuf,
     #[arg(long = "in", value_name = "FICHERO")]
     input: PathBuf,
-    #[arg(long, value_name = "PID", default_value = "0x1FF0", value_parser = parse_pid)]
+    #[arg(long, value_name = "PID", default_value = "0x1FF0", value_parser = pqav::ts::parse_pid)]
     anchor_pid: u16,
     #[arg(long)]
     no_expect_signed: bool,

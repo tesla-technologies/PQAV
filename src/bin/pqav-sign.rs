@@ -16,17 +16,6 @@ use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 use std::time::Instant;
 
-fn parse_pid(s: &str) -> Result<u16, String> {
-    let p = match s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
-        Some(h) => u16::from_str_radix(h, 16).map_err(|_| "PID inválido")?,
-        None => s.parse::<u16>().map_err(|_| "PID inválido")?,
-    };
-    if !(0x0010..=0x1FFE).contains(&p) {
-        return Err(format!("PID 0x{:04X} fuera de rango", p));
-    }
-    Ok(p)
-}
-
 #[derive(clap::Parser, Debug)]
 #[command(version, about = "Firma un TS grabado (H.264 + AAC) con ML-DSA-44")]
 struct Args {
@@ -36,7 +25,7 @@ struct Args {
     input: PathBuf,
     #[arg(long, value_name = "FICHERO")]
     out: PathBuf,
-    #[arg(long, value_name = "PID", default_value = "0x1FF0", value_parser = parse_pid)]
+    #[arg(long, value_name = "PID", default_value = "0x1FF0", value_parser = pqav::ts::parse_pid)]
     anchor_pid: u16,
     #[arg(long, value_name = "BIT/S", default_value_t = 8_000_000)]
     bitrate: u64,
