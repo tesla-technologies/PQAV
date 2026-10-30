@@ -119,9 +119,9 @@ Below is the summary of the test suite (`results/tests.csv`):
 | Bytes in TS per frame | ≈ 558 B/frame |
 | Signatures PID bitrate | 111.7 kb/s |
 | Insertion delay (p50 / p99) | 20.7 ms / 53.4 ms |
-| Signing time per anchor (p50 / p99) | 334 µs / 1901 µs |
-| Verification time per anchor (p50 / p99) | 56 µs / 96 µs |
-| Total verification time (60s file) | 0.13 s |
+| Signing time per anchor (p50 / p99) | 302 µs / 1477 µs |
+| Verification time per anchor (p50 / p99) | 54 µs / 84 µs |
+| Total verification time (60s file) | 0.12 s |
 | Appended packets at the end | 20 packets |
 
 
