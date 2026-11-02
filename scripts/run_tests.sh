@@ -125,7 +125,7 @@ IFS='|' read -r G M <<< "$(leer_json P3)"
 anotar P3 "quitar nulos" "AUTENTICO" 0 "exacto" "" "n/a" "$G" "$RC" "$M"
 
 #P4
-ffmpeg -hide_banner -y -i testdata/firmado.ts -map 0 -c copy -f mpegts testdata/p4.ts || echo "falló la preparación de P4"
+ffmpeg -hide_banner -y -i testdata/firmado.ts -map 0 -c copy -f mpegts testdata/p4.ts 2> results/P4_ffmpeg.txt || echo "falló la preparación de P4"
 verificar P4 testdata/p4.ts
 IFS='|' read -r G M <<< "$(leer_json P4)"
 anotar P4 "ffmpeg -c copy" "n/a" "n/a" "n/a" "n/a" "n/a" "$G" "$RC" "$M"

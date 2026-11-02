@@ -1,0 +1,27 @@
+Input #0, mpegts, from 'testdata/firmado.ts':
+  Duration: 00:01:00.02, start: 1.458667, bitrate: 7996 kb/s
+  Program 1 
+    Metadata:
+      service_name    : Service01
+      service_provider: FFmpeg
+  Stream #0:0[0x100]: Video: h264 (High) ([27][0][0][0] / 0x001B), yuv420p(progressive), 1920x1080 [SAR 1:1 DAR 16:9], 25 fps, 25 tbr, 90k tbn
+  Stream #0:1[0x101](spa): Audio: aac (LC) ([15][0][0][0] / 0x000F), 48000 Hz, stereo, fltp, 130 kb/s
+  Stream #0:2[0x1ff0]: Data: bin_data (PQAV / 0x56415150)
+Output #0, mpegts, to '/tmp/p4.ts':
+  Metadata:
+    encoder         : Lavf60.16.100
+  Stream #0:0: Video: h264 (High) ([27][0][0][0] / 0x001B), yuv420p(progressive), 1920x1080 [SAR 1:1 DAR 16:9], q=2-31, 25 fps, 25 tbr, 90k tbn
+  Stream #0:1(spa): Audio: aac (LC) ([15][0][0][0] / 0x000F), 48000 Hz, stereo, fltp, 130 kb/s
+  Stream #0:2: Data: bin_data (PQAV / 0x56415150)
+Stream mapping:
+  Stream #0:0 -> #0:0 (copy)
+  Stream #0:1 -> #0:1 (copy)
+  Stream #0:2 -> #0:2 (copy)
+Press [q] to stop, [?] for help
+size=       0kB time=-00:00:00.05 bitrate=  -0.0kbits/s speed=N/A    [mpegts @ 0x5b3ab687e100] Stream 2, codec bin_data, is muxed as a private data stream and may not be recognized upon reading.
+[mpegts @ 0x5b3ab687e100] Application provided invalid, non monotonically increasing dts to muxer in stream 2: 1920 >= 0
+[dost#0:2/copy @ 0x5b3ab67fd980] Error submitting a packet to the muxer: Invalid argument
+[out#0/mpegts @ 0x5b3ab671fd80] Error muxing a packet
+[out#0/mpegts @ 0x5b3ab671fd80] video:275kB audio:5kB subtitle:0kB other streams:6kB global headers:0kB muxing overhead: 2.318963%
+size=     292kB time=00:00:00.66 bitrate=3618.2kbits/s speed= 155x    
+Conversion failed!
