@@ -408,6 +408,23 @@ fn montar_informe(
     }
 }
 
+fn intervalo_invalido(index: usize, base: Option<u64>, detail: &str) -> IntervalReport {
+    IntervalReport {
+        index,
+        counter: None,
+        base,
+        verdict: Verdict::FirmaInvalida,
+        detail: Some(detail.to_string()),
+        gap_before: 0,
+        video_ok: 0,
+        video_total: 0,
+        audio_ok: 0,
+        audio_total: 0,
+        modified: vec![],
+        missing: vec![],
+    }
+}
+
 fn segunda_pasada(r: &Recogido, vk: &VerifyingKey<MlDsa44>, kid: &[u8; 8]) -> Report {
     let mut indice = HashMap::new();
     for (i, u) in r.unidades.iter().enumerate() {
@@ -429,20 +446,7 @@ fn segunda_pasada(r: &Recogido, vk: &VerifyingKey<MlDsa44>, kid: &[u8; 8]) -> Re
         let (cose_bytes, base) = match (&ancla.cose, ancla.base) {
             (Some(c), Some(b)) => (c, b),
             _ => {
-                intervals.push(IntervalReport {
-                    index: k,
-                    counter: None,
-                    base: None,
-                    verdict: Verdict::FirmaInvalida,
-                    detail: Some("PES de ancla ilegible".to_string()),
-                    gap_before: 0,
-                    video_ok: 0,
-                    video_total: 0,
-                    audio_ok: 0,
-                    audio_total: 0,
-                    modified: vec![],
-                    missing: vec![],
-                });
+                intervals.push(intervalo_invalido(k, None, "PES de ancla ilegible"));
                 invalidas_desde_ultimo += 1;
                 continue;
             }
@@ -457,20 +461,7 @@ fn segunda_pasada(r: &Recogido, vk: &VerifyingKey<MlDsa44>, kid: &[u8; 8]) -> Re
                 match decode_strict(&v.payload) {
                     Ok(p) => (p, v.hash_cose),
                     Err(_) => {
-                        intervals.push(IntervalReport {
-                            index: k,
-                            counter: None,
-                            base: Some(base),
-                            verdict: Verdict::FirmaInvalida,
-                            detail: Some("carga no canónica".to_string()),
-                            gap_before: 0,
-                            video_ok: 0,
-                            video_total: 0,
-                            audio_ok: 0,
-                            audio_total: 0,
-                            modified: vec![],
-                            missing: vec![],
-                        });
+                        intervals.push(intervalo_invalido(k, Some(base), "carga no canónica"));
                         invalidas_desde_ultimo += 1;
                         continue;
                     }
@@ -482,20 +473,7 @@ fn segunda_pasada(r: &Recogido, vk: &VerifyingKey<MlDsa44>, kid: &[u8; 8]) -> Re
                     CoseError::KidDesconocido => "kid desconocido",
                     _ => "firma no válida",
                 };
-                intervals.push(IntervalReport {
-                    index: k,
-                    counter: None,
-                    base: Some(base),
-                    verdict: Verdict::FirmaInvalida,
-                    detail: Some(det.to_string()),
-                    gap_before: 0,
-                    video_ok: 0,
-                    video_total: 0,
-                    audio_ok: 0,
-                    audio_total: 0,
-                    modified: vec![],
-                    missing: vec![],
-                });
+                intervals.push(intervalo_invalido(k, Some(base), det));
                 invalidas_desde_ultimo += 1;
                 continue;
             }
