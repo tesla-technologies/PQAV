@@ -157,9 +157,11 @@ fn ancla_eliminada() {
 }
 
 #[test]
+#[ignore = "necesita testdata/muestra/firmado_10s.ts"]
 fn pts_cambiado() {
     let mut data = fs::read("testdata/muestra/firmado_10s.ts").unwrap();
     let mut video_frames = 0;
+    let mut cambiado = false;
 
     for i in (0..data.len() - 20).step_by(188) {
         let pid = (((data[i + 1] & 0x1F) as u16) << 8) | (data[i + 2] as u16);
@@ -167,11 +169,22 @@ fn pts_cambiado() {
         if pid == 0x0100 && pusi {
             video_frames += 1;
             if video_frames == 61 {
-                data[i + 17] ^= 0x01;
+                let afc = (data[i + 3] >> 4) & 0x03;
+                let inicio = i
+                    + 4
+                    + if afc & 0x02 != 0 {
+                        1 + data[i + 4] as usize
+                    } else {
+                        0
+                    };
+                data[inicio + 13] ^= 0x02;
+                cambiado = true;
                 break;
             }
         }
     }
+
+    assert!(cambiado, "No se encontró el frame 61 para cambiar");
 
     let out = get_temp_path("pts_cambiado.ts");
     let json = get_temp_path("pts_cambiado.json");
@@ -179,6 +192,11 @@ fn pts_cambiado() {
     let (code, _) = run_verify(&out, Some(&json));
     assert_eq!(code, Some(1));
     check_json_reason(&json, "INCOMPLETO");
+    let content = fs::read_to_string(&json).unwrap();
+    assert!(
+        content.contains("\"unreadable_pes\": 0"),
+        "El PES ha quedado ilegible"
+    );
     let _ = fs::remove_file(out);
     let _ = fs::remove_file(json);
 }
