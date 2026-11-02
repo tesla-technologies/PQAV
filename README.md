@@ -36,6 +36,7 @@ Run the main script from the project root:
 ```bash
 scripts/run_tests.sh
 ```
+>`cargo test` also runs seven attacks on the 10 s sample (`tests/ataques.rs`).
 It takes about 10 minutes. The results are saved in `results/tests.csv` and backed up with timestamps in `results/runs/`.
 ## Results
 Below is the summary of the test suite (`results/tests.csv`):

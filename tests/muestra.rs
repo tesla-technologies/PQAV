@@ -24,8 +24,10 @@ fn muestra_autentica() {
 #[test]
 fn muestra_manipulada() {
     let input = "testdata/muestra/firmado_10s.ts";
-    let output = "/tmp/muestra_manipulada.ts";
+    let out_path =
+        std::env::temp_dir().join(format!("muestra_manipulada_{}.ts", std::process::id()));
     let mut data = fs::read(input).expect("Falta la muestra");
+    let mut cambiado = false;
 
     for i in (0..data.len()).step_by(188) {
         if data[i] == 0x47
@@ -35,9 +37,13 @@ fn muestra_manipulada() {
             && (data[i + 3] & 0x30) == 0x10
         {
             data[i + 4] ^= 0xFF;
+            cambiado = true;
             break;
         }
     }
-    fs::write(output, data).unwrap();
-    assert_eq!(verificar(output), Some(1));
+
+    assert!(cambiado, "No se encontró ningún paquete para cambiar");
+    fs::write(&out_path, data).unwrap();
+    assert_eq!(verificar(out_path.to_str().unwrap()), Some(1));
+    let _ = fs::remove_file(out_path);
 }
