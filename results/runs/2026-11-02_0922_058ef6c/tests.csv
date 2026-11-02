@@ -1,0 +1,15 @@
+id,descripcion,esperado_global,esperado_codigo,obtenido_global,obtenido_codigo,motivos,pasa
+P1,fichero intacto,AUTENTICO,0,AUTENTICO,0,,si
+P2,remapeo de PID,AUTENTICO,0,AUTENTICO,0,,si
+P3,quitar nulos,AUTENTICO,0,AUTENTICO,0,,si
+P4,ffmpeg -c copy,n/a,n/a,ERROR_ENTRADA,2,,n/a
+P5,audio cambiado 1 s,RECHAZADO,1,RECHAZADO,1,MANIPULADO,si
+P6,etiqueta idioma cambiada,RECHAZADO,1,RECHAZADO,1,MAPA_ALTERADO,si
+P7,un frame cambiado,RECHAZADO,1,RECHAZADO,1,MANIPULADO,si
+P8,empalme con otra sesion,RECHAZADO,1,RECHAZADO,1,EMPALME,si
+P9,un segundo borrado,RECHAZADO,1,RECHAZADO,1,INCOMPLETO;HUECO;NO_FIRMADA,si
+P10a,firmas quitadas y PMT limpia,SIN_FIRMAR,3,SIN_FIRMAR,3,,si
+P10b,firmas quitadas PMT sucia,SIN_FIRMAR,3,SIN_FIRMAR,3,,si
+P10c,firmas quitadas sin esperar firma,SIN_FIRMAR,0,SIN_FIRMAR,0,,si
+P11,otra clave,RECHAZADO,1,RECHAZADO,1,FIRMA_INVALIDA;NO_FIRMADA;SIN_FINAL,si
+P12,firma corrupta,RECHAZADO,1,RECHAZADO,1,FIRMA_INVALIDA;NO_FIRMADA,si

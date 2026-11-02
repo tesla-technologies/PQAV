@@ -1,0 +1,17 @@
+id,valor,unidad,estado,fichero
+M1_media,3191.89,B,M,results/firmado_stats.json
+M1_min,2752,B,M,results/firmado_stats.json
+M1_max,3612,B,M,results/firmado_stats.json
+M2_solo_video,457.65,B/frame,M,results/solo_video_firmado_stats.json
+M2_con_audio,531.98,B/frame,M,results/firmado_stats.json
+M3,558.36,B/frame,M,results/firmado_stats.json
+M4,111.67,kb/s,M,testdata/firmado.ts
+M5,74.33,B/frame,M,results/firmado_stats.json y results/solo_video_firmado_stats.json
+M6_p50,20.70,ms,M,results/firmado_stats.json
+M6_p99,53.40,ms,M,results/firmado_stats.json
+M7_p50,302,us,M,results/firmado_stats.json
+M7_p99,1477,us,M,results/firmado_stats.json
+M8_p50,54,us,M,results/P1.json
+M8_p99,84,us,M,results/P1.json
+M9,0.12,s,M,results/verify_time.txt
+M10,20,paquetes,M,results/firmado_stats.json

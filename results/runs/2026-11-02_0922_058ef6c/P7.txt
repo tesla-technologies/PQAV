@@ -1,0 +1,1 @@
+RESULTADO: RECHAZADO  intervalos=250 autenticos=249 manipulados=1  motivos: MANIPULADO

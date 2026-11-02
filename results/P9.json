@@ -3587,7 +3587,7 @@
   "unreadable_pes": 0,
   "final_anchor": true,
   "verify_us": {
-    "p50": 55,
-    "p99": 114
+    "p50": 52,
+    "p99": 87
   }
 }

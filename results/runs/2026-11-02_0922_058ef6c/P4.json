@@ -1,0 +1,15 @@
+{
+  "global": "ERROR_ENTRADA",
+  "reasons": [],
+  "error": "tipo de flujo no admitido: 0x06 en el PID 0x0102",
+  "anchors": 0,
+  "intervals": [],
+  "received_units": {
+    "video": 0,
+    "audio": 0
+  },
+  "unsigned_units": 0,
+  "unreadable_pes": 0,
+  "final_anchor": false,
+  "verify_us": null
+}
