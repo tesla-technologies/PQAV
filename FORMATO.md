@@ -97,6 +97,8 @@ dif(a, b) = ((a − b + 2^32) mod 2^33) − 2^32
 
 Signed result, in 90 kHz ticks, between −2^32 and 2^32 − 1. Examples that must pass in your tests: `dif(5, 2^33 − 5) = 10` and `dif(2^33 − 5, 5) = −10`. The `mod` is always the positive one (in Rust, `rem_euclid`).
 
+>The adaptation field stuffing is intentionally not signed.
+
 ## 3. Component map
 
 Derived from the PMT:
