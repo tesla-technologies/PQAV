@@ -72,7 +72,6 @@ fn basura() {
 }
 
 #[test]
-#[ignore = "necesita testdata/muestra/firmado_10s.ts"]
 fn sesion_repetida() {
     let mut data = fs::read("testdata/muestra/firmado_10s.ts").unwrap();
     let clone = data.clone();
@@ -88,7 +87,6 @@ fn sesion_repetida() {
 }
 
 #[test]
-#[ignore = "necesita testdata/muestra/firmado_10s.ts"]
 fn ancla_duplicada() {
     let data = fs::read("testdata/muestra/firmado_10s.ts").unwrap();
     let mut out_data = Vec::new();
@@ -130,7 +128,6 @@ fn ancla_duplicada() {
 }
 
 #[test]
-#[ignore = "necesita testdata/muestra/firmado_10s.ts"]
 fn ancla_eliminada() {
     let data = fs::read("testdata/muestra/firmado_10s.ts").unwrap();
     let mut out_data = Vec::new();
@@ -160,7 +157,6 @@ fn ancla_eliminada() {
 }
 
 #[test]
-#[ignore = "necesita testdata/muestra/firmado_10s.ts"]
 fn pts_cambiado() {
     let mut data = fs::read("testdata/muestra/firmado_10s.ts").unwrap();
     let mut video_frames = 0;
