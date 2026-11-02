@@ -100,7 +100,8 @@ Below is the summary of the test suite (`results/tests.csv`):
 | P11 | Different key | RECHAZADO (1), FIRMA_INVALIDA | RECHAZADO (1), FIRMA_INVALIDA | yes |
 | P12 | Corrupt signature | RECHAZADO (1), FIRMA_INVALIDA | RECHAZADO (1), FIRMA_INVALIDA | yes |
 
-
+> This test does not pass by design. Processing the signed file with ffmpeg -c copy aborts with an "Application provided invalid, non monotonically increasing dts" error. This occurs because the base PTS of the anchors does not increase strictly monotonically due to the presence of B-frames, leading to a failed conversion.
+> Verifying the stream with a different public key correctly rejects the file entirely, yielding FIRMA_INVALIDA, NO_FIRMADA, and SIN_FINAL across all intervals.
 
 
 *Null substitution:* Yes, it maintains the packet count, with 20 appended packets at the end of the file representing the final anchor.
@@ -119,9 +120,9 @@ Below is the summary of the test suite (`results/tests.csv`):
 | Bytes in TS per frame | ≈ 558 B/frame |
 | Signatures PID bitrate | 111.7 kb/s |
 | Insertion delay (p50 / p99) | 20.7 ms / 53.4 ms |
-| Signing time per anchor (p50 / p99) | 302 µs / 1477 µs |
-| Verification time per anchor (p50 / p99) | 54 µs / 84 µs |
-| Total verification time (60s file) | 0.12 s |
+| Signing time per anchor (p50 / p99) | 306 µs / 1676 µs |
+| Verification time per anchor (p50 / p99) | 52 µs / 110 µs |
+| Total verification time (60s file) | 0.11 s |
 | Appended packets at the end | 20 packets |
 
 
@@ -165,6 +166,7 @@ Below is the summary of the test suite (`results/tests.csv`):
 ## Format
 
 Please refer to [`FORMATO.md`](FORMATO.md) for the detailed technical specification of the byte structures, payloads, and protocols.
+The MVP uses the format_identifier PQAV (0x50514156) for the registration descriptor in the PMT.
 
 
 
@@ -191,7 +193,7 @@ Please refer to [`FORMATO.md`](FORMATO.md) for the detailed technical specificat
 
 ## Licence
 
-The code is dual-licensed under MIT OR Apache-2.0. Documentation and data are licensed under CC BY 4.0. See `LICENSE-MIT` and `LICENSE-APACHE` for details.
+This project is dual-licensed under the MIT License and the Apache License 2.0. You may choose either license for your purposes. See the LICENSE-MIT and LICENSE-APACHE files for full details. Documentation and data are licensed under CC BY 4.0.
 
 ---
 
