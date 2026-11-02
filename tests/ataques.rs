@@ -157,7 +157,6 @@ fn ancla_eliminada() {
 }
 
 #[test]
-#[ignore = "necesita testdata/muestra/firmado_10s.ts"]
 fn pts_cambiado() {
     let mut data = fs::read("testdata/muestra/firmado_10s.ts").unwrap();
     let mut video_frames = 0;
