@@ -64,7 +64,6 @@ struct Recogido {
     mapas_pmt: Vec<Vec<(u8, String, u8)>>,
     unidades: Vec<Unit>,
     anclas: Vec<AnclaRecibida>,
-    pid_anclas: Option<u16>,
     unreadable_pes: usize,
     // received: Received   //se añadirá cuando se complete report
 }
@@ -226,227 +225,122 @@ fn primera_pasada(datos: &[u8], arg_anchor_pid: u16) -> Result<Recogido, VerifyE
         mapas_pmt,
         unidades,
         anclas,
-        pid_anclas,
         unreadable_pes,
     })
 }
 
-fn segunda_pasada(r: &Recogido, vk: &VerifyingKey<MlDsa44>, kid: &[u8; 8]) -> Report {
-    let _ = r.pid_anclas;
-    let mut indice = HashMap::new();
-    for (i, u) in r.unidades.iter().enumerate() {
-        indice.entry((u.comp, u.pts)).or_insert(i);
+fn comprobar_cadena_anclas(
+    p: &pqav::anchor::AnchorPayload,
+    stream_id_0: &mut Option<[u8; 16]>,
+    ultimo_valido: &Option<(u64, [u8; 32])>,
+    invalidas_desde_ultimo: u64,
+    gap_before: &mut u64,
+) -> (Vec<Verdict>, Option<String>) {
+    let mut veredictos = vec![Verdict::Autentico];
+    let mut detail = None;
+
+    if stream_id_0.is_none() {
+        *stream_id_0 = Some(p.stream_id);
     }
-    let mut cubiertas = vec![false; r.unidades.len()];
-
-    let mut stream_id_0 = None;
-    let mut ultimo_valido: Option<(u64, [u8; 32])> = None;
-    let mut invalidas_desde_ultimo = 0;
-    let mut hueco = false;
-    let mut final_presente = false;
-
-    let mut intervals = Vec::new();
-    let mut verify_times = Vec::new();
-
-    for (k, ancla) in r.anclas.iter().enumerate() {
-        let mut gap_before = 0;
-        let (cose_bytes, base) = match (&ancla.cose, ancla.base) {
-            (Some(c), Some(b)) => (c, b),
-            _ => {
-                intervals.push(IntervalReport {
-                    index: k,
-                    counter: None,
-                    base: None,
-                    verdict: Verdict::FirmaInvalida,
-                    detail: Some("PES de ancla ilegible".to_string()),
-                    gap_before: 0,
-                    video_ok: 0,
-                    video_total: 0,
-                    audio_ok: 0,
-                    audio_total: 0,
-                    modified: vec![],
-                    missing: vec![],
-                });
-                invalidas_desde_ultimo += 1;
-                continue;
-            }
-        };
-
-        let t0 = Instant::now();
-        let v = match cose::verify(vk, kid, cose_bytes) {
-            Ok(v) => v,
-            Err(e) => {
-                let det = match e {
-                    CoseError::MalFormado(_) => "COSE mal formado",
-                    CoseError::KidDesconocido => "kid desconocido",
-                    CoseError::FirmaNoValida => "firma no válida",
-                    _ => "firma no válida",
-                };
-                intervals.push(IntervalReport {
-                    index: k,
-                    counter: None,
-                    base: Some(base),
-                    verdict: Verdict::FirmaInvalida,
-                    detail: Some(det.to_string()),
-                    gap_before: 0,
-                    video_ok: 0,
-                    video_total: 0,
-                    audio_ok: 0,
-                    audio_total: 0,
-                    modified: vec![],
-                    missing: vec![],
-                });
-                invalidas_desde_ultimo += 1;
-                continue;
-            }
-        };
-        verify_times.push(t0.elapsed().as_micros() as u64);
-
-        let p = match decode_strict(&v.payload) {
-            Ok(p) => p,
-            Err(_) => {
-                intervals.push(IntervalReport {
-                    index: k,
-                    counter: None,
-                    base: Some(base),
-                    verdict: Verdict::FirmaInvalida,
-                    detail: Some("carga no canónica".to_string()),
-                    gap_before: 0,
-                    video_ok: 0,
-                    video_total: 0,
-                    audio_ok: 0,
-                    audio_total: 0,
-                    modified: vec![],
-                    missing: vec![],
-                });
-                invalidas_desde_ultimo += 1;
-                continue;
-            }
-        };
-
-        let mut veredictos = vec![Verdict::Autentico];
-        let mut detail = None;
-
-        if stream_id_0.is_none() {
-            stream_id_0 = Some(p.stream_id);
+    if Some(p.stream_id) != *stream_id_0 {
+        veredictos.push(Verdict::Empalme);
+        if detail.is_none() {
+            detail = Some("stream_id distinto".to_string());
         }
-        if Some(p.stream_id) != stream_id_0 {
-            veredictos.push(Verdict::Empalme);
-            if detail.is_none() {
-                detail = Some("stream_id distinto");
-            }
+    }
+
+    let esperado = ultimo_valido.map_or(invalidas_desde_ultimo, |(last_c, _)| {
+        last_c + 1 + invalidas_desde_ultimo
+    });
+
+    if p.counter > esperado {
+        *gap_before = p.counter - esperado;
+    } else if p.counter < esperado {
+        veredictos.push(Verdict::Empalme);
+        if detail.is_none() {
+            detail = Some("contador hacia atrás".to_string());
         }
-
-        let esperado = if let Some((last_counter, _)) = ultimo_valido {
-            last_counter + 1 + invalidas_desde_ultimo
-        } else {
-            invalidas_desde_ultimo
-        };
-
-        if p.counter > esperado {
-            hueco = true;
-            gap_before = p.counter - esperado;
-        } else if p.counter < esperado {
-            veredictos.push(Verdict::Empalme);
-            if detail.is_none() {
-                detail = Some("contador hacia atrás");
-            }
-        } else if invalidas_desde_ultimo == 0 {
-            if let Some((_, last_hash)) = ultimo_valido {
-                if p.prev != last_hash {
-                    veredictos.push(Verdict::Empalme);
-                    if detail.is_none() {
-                        detail = Some("prev no coincide");
-                    }
+    } else if invalidas_desde_ultimo == 0 {
+        if let Some((_, last_hash)) = ultimo_valido {
+            if p.prev != *last_hash {
+                veredictos.push(Verdict::Empalme);
+                if detail.is_none() {
+                    detail = Some("prev no coincide".to_string());
                 }
             }
         }
+    }
+    (veredictos, detail)
+}
 
-        let mut mapa_ok = false;
-        for m in &r.mapas_pmt {
-            if *m == p.components {
-                mapa_ok = true;
-                break;
-            }
-        }
-        if !mapa_ok {
-            veredictos.push(Verdict::MapaAlterado);
-            if detail.is_none() {
-                detail = Some("mapa distinto del de la PMT");
-            }
-        }
+fn comparar_unidades(
+    p: &pqav::anchor::AnchorPayload,
+    r: &Recogido,
+    base: u64,
+    indice: &HashMap<(u8, u64), usize>,
+    cubiertas: &mut [bool],
+    veredictos: &mut Vec<Verdict>,
+) -> (usize, usize, usize, usize, Vec<UnitRef>, Vec<UnitRef>) {
+    let mut video_ok = 0;
+    let mut video_total = 0;
+    let mut audio_ok = 0;
+    let mut audio_total = 0;
+    let mut modified = Vec::new();
+    let mut missing = Vec::new();
 
-        let mut video_ok = 0;
-        let mut video_total = 0;
-        let mut audio_ok = 0;
-        let mut audio_total = 0;
-        let mut modified = Vec::new();
-        let mut missing = Vec::new();
-
-        for &(comp, rel, hash) in &p.units {
-            let is_video = r
-                .mapa
-                .get(comp as usize)
-                .map(|c| c.stream_type == 0x1B)
-                .unwrap_or(false);
-            if is_video {
-                video_total += 1;
-            } else {
-                audio_total += 1;
-            }
-
-            let pts = (base + rel as u64) % PTS_MOD;
-            if let Some(&idx) = indice.get(&(comp, pts)) {
-                cubiertas[idx] = true;
-                if r.unidades[idx].hash != hash {
-                    modified.push(UnitRef { comp, pts });
-                } else if is_video {
-                    video_ok += 1;
-                } else {
-                    audio_ok += 1;
-                }
-            } else {
-                missing.push(UnitRef { comp, pts });
-            }
-        }
-
-        if !modified.is_empty() {
-            veredictos.push(Verdict::Manipulado);
-        } else if !missing.is_empty() {
-            veredictos.push(Verdict::Incompleto);
-        }
-
-        let verdict = *veredictos.iter().min().unwrap_or(&Verdict::Autentico);
-        let final_detail = if verdict <= Verdict::MapaAlterado {
-            detail.map(|s| s.to_string())
+    for &(comp, rel, hash) in &p.units {
+        let is_video = r
+            .mapa
+            .get(comp as usize)
+            .is_some_and(|c| c.stream_type == 0x1B);
+        if is_video {
+            video_total += 1;
         } else {
-            None
-        };
-
-        ultimo_valido = Some((p.counter, v.hash_cose));
-        invalidas_desde_ultimo = 0;
-        if p.is_final {
-            final_presente = true;
+            audio_total += 1;
         }
 
-        intervals.push(IntervalReport {
-            index: k,
-            counter: Some(p.counter),
-            base: Some(base),
-            verdict,
-            detail: final_detail,
-            gap_before,
-            video_ok,
-            video_total,
-            audio_ok,
-            audio_total,
-            modified,
-            missing,
-        });
+        let pts = (base + rel as u64) % PTS_MOD;
+        if let Some(&idx) = indice.get(&(comp, pts)) {
+            cubiertas[idx] = true;
+            if r.unidades[idx].hash != hash {
+                modified.push(UnitRef { comp, pts });
+            } else if is_video {
+                video_ok += 1;
+            } else {
+                audio_ok += 1;
+            }
+        } else {
+            missing.push(UnitRef { comp, pts });
+        }
     }
 
+    if !modified.is_empty() {
+        veredictos.push(Verdict::Manipulado);
+    } else if !missing.is_empty() {
+        veredictos.push(Verdict::Incompleto);
+    }
+
+    (
+        video_ok,
+        video_total,
+        audio_ok,
+        audio_total,
+        modified,
+        missing,
+    )
+}
+
+fn montar_informe(
+    r: &Recogido,
+    intervals: Vec<IntervalReport>,
+    cubiertas: &[bool],
+    verify_times: &mut [u64],
+    hueco: bool,
+    final_presente: bool,
+) -> Report {
     let unsigned_units = cubiertas.iter().filter(|&&c| !c).count();
     let mut reasons = Vec::new();
+
     for &v in &[
         Verdict::FirmaInvalida,
         Verdict::Empalme,
@@ -487,14 +381,15 @@ fn segunda_pasada(r: &Recogido, vk: &VerifyingKey<MlDsa44>, kid: &[u8; 8]) -> Re
         Global::Rechazado
     };
 
-    let mut verify_us = None;
-    if !verify_times.is_empty() {
+    let verify_us = if !verify_times.is_empty() {
         verify_times.sort_unstable();
-        verify_us = Some(Percentiles {
-            p50: percentile(&verify_times, 50).unwrap_or(0),
-            p99: percentile(&verify_times, 99).unwrap_or(0),
-        });
-    }
+        Some(Percentiles {
+            p50: percentile(verify_times, 50).unwrap_or(0),
+            p99: percentile(verify_times, 99).unwrap_or(0),
+        })
+    } else {
+        None
+    };
 
     Report {
         global,
@@ -511,6 +406,159 @@ fn segunda_pasada(r: &Recogido, vk: &VerifyingKey<MlDsa44>, kid: &[u8; 8]) -> Re
         final_anchor: final_presente,
         verify_us,
     }
+}
+
+fn segunda_pasada(r: &Recogido, vk: &VerifyingKey<MlDsa44>, kid: &[u8; 8]) -> Report {
+    let mut indice = HashMap::new();
+    for (i, u) in r.unidades.iter().enumerate() {
+        indice.entry((u.comp, u.pts)).or_insert(i);
+    }
+    let mut cubiertas = vec![false; r.unidades.len()];
+
+    let mut stream_id_0 = None;
+    let mut ultimo_valido: Option<(u64, [u8; 32])> = None;
+    let mut invalidas_desde_ultimo = 0;
+    let mut hueco = false;
+    let mut final_presente = false;
+
+    let mut intervals = Vec::new();
+    let mut verify_times = Vec::new();
+
+    for (k, ancla) in r.anclas.iter().enumerate() {
+        let mut gap_before = 0;
+        let (cose_bytes, base) = match (&ancla.cose, ancla.base) {
+            (Some(c), Some(b)) => (c, b),
+            _ => {
+                intervals.push(IntervalReport {
+                    index: k,
+                    counter: None,
+                    base: None,
+                    verdict: Verdict::FirmaInvalida,
+                    detail: Some("PES de ancla ilegible".to_string()),
+                    gap_before: 0,
+                    video_ok: 0,
+                    video_total: 0,
+                    audio_ok: 0,
+                    audio_total: 0,
+                    modified: vec![],
+                    missing: vec![],
+                });
+                invalidas_desde_ultimo += 1;
+                continue;
+            }
+        };
+
+        let t0 = Instant::now();
+        let v_res = cose::verify(vk, kid, cose_bytes);
+
+        let (p, hash_cose) = match v_res {
+            Ok(v) => {
+                verify_times.push(t0.elapsed().as_micros() as u64);
+                match decode_strict(&v.payload) {
+                    Ok(p) => (p, v.hash_cose),
+                    Err(_) => {
+                        intervals.push(IntervalReport {
+                            index: k,
+                            counter: None,
+                            base: Some(base),
+                            verdict: Verdict::FirmaInvalida,
+                            detail: Some("carga no canónica".to_string()),
+                            gap_before: 0,
+                            video_ok: 0,
+                            video_total: 0,
+                            audio_ok: 0,
+                            audio_total: 0,
+                            modified: vec![],
+                            missing: vec![],
+                        });
+                        invalidas_desde_ultimo += 1;
+                        continue;
+                    }
+                }
+            }
+            Err(e) => {
+                let det = match e {
+                    CoseError::MalFormado(_) => "COSE mal formado",
+                    CoseError::KidDesconocido => "kid desconocido",
+                    _ => "firma no válida",
+                };
+                intervals.push(IntervalReport {
+                    index: k,
+                    counter: None,
+                    base: Some(base),
+                    verdict: Verdict::FirmaInvalida,
+                    detail: Some(det.to_string()),
+                    gap_before: 0,
+                    video_ok: 0,
+                    video_total: 0,
+                    audio_ok: 0,
+                    audio_total: 0,
+                    modified: vec![],
+                    missing: vec![],
+                });
+                invalidas_desde_ultimo += 1;
+                continue;
+            }
+        };
+
+        let (mut veredictos, mut detail) = comprobar_cadena_anclas(
+            &p,
+            &mut stream_id_0,
+            &ultimo_valido,
+            invalidas_desde_ultimo,
+            &mut gap_before,
+        );
+        if gap_before > 0 {
+            hueco = true;
+        }
+
+        if !r.mapas_pmt.contains(&p.components) {
+            veredictos.push(Verdict::MapaAlterado);
+            if detail.is_none() {
+                detail = Some("mapa distinto del de la PMT".to_string());
+            }
+        }
+
+        let (video_ok, video_total, audio_ok, audio_total, modified, missing) =
+            comparar_unidades(&p, r, base, &indice, &mut cubiertas, &mut veredictos);
+
+        let verdict = *veredictos.iter().min().unwrap_or(&Verdict::Autentico);
+        let final_detail = if verdict <= Verdict::MapaAlterado {
+            detail
+        } else {
+            None
+        };
+
+        ultimo_valido = Some((p.counter, hash_cose));
+        invalidas_desde_ultimo = 0;
+        if p.is_final {
+            final_presente = true;
+        }
+
+        intervals.push(IntervalReport {
+            index: k,
+            counter: Some(p.counter),
+            base: Some(base),
+            verdict,
+            detail: final_detail,
+            gap_before,
+            video_ok,
+            video_total,
+            audio_ok,
+            audio_total,
+            modified,
+            missing,
+        });
+    }
+
+    montar_informe(
+        r,
+        intervals,
+        &cubiertas,
+        &mut verify_times,
+        hueco,
+        final_presente,
+    )
 }
 
 fn error_report(msg: String) -> Report {
@@ -705,47 +753,40 @@ fn imprimir_report(r: &Report, quiet: bool, no_expect: bool) {
     }
 }
 
+fn salir_con_error(msg: String, args: &Args) -> ExitCode {
+    let rep = error_report(msg.clone());
+    imprimir_report(&rep, args.quiet, args.no_expect_signed);
+    if let Some(p) = &args.json {
+        if let Ok(js) = serde_json::to_string_pretty(&rep) {
+            let _ = std::fs::write(p, js);
+        }
+    }
+    eprintln!("pqav-verify: error: {}", msg);
+    ExitCode::from(2)
+}
+
 fn run() -> Result<ExitCode, ()> {
     let args = Args::parse();
 
     let key_bytes = match std::fs::read(&args.pub_key) {
         Ok(b) => b,
         Err(e) => {
-            let err = VerifyError::Leer(args.pub_key.display().to_string(), e);
-            let msg = err.to_string();
-            imprimir_report(
-                &error_report(msg.clone()),
-                args.quiet,
-                args.no_expect_signed,
-            );
-            if let Some(p) = &args.json {
-                if let Ok(js) = serde_json::to_string_pretty(&error_report(msg.clone())) {
-                    let _ = std::fs::write(p, js);
-                }
-            }
-            eprintln!("pqav-verify: error: {}", msg);
-            return Ok(ExitCode::from(2));
+            return Ok(salir_con_error(
+                VerifyError::Leer(args.pub_key.display().to_string(), e).to_string(),
+                &args,
+            ))
         }
     };
+
     if key_bytes.len() != 1312 {
         let msg = format!(
             "clave pública inválida en {}: mide {} bytes y tiene que medir 1312",
             args.pub_key.display(),
             key_bytes.len()
         );
-        imprimir_report(
-            &error_report(msg.clone()),
-            args.quiet,
-            args.no_expect_signed,
-        );
-        if let Some(p) = &args.json {
-            if let Ok(js) = serde_json::to_string_pretty(&error_report(msg.clone())) {
-                let _ = std::fs::write(p, js);
-            }
-        }
-        eprintln!("pqav-verify: error: {}", msg);
-        return Ok(ExitCode::from(2));
+        return Ok(salir_con_error(msg, &args));
     }
+
     let enc_vk = EncodedVerifyingKey::<MlDsa44>::try_from(&key_bytes[..]).map_err(|_| ())?;
     let vk = VerifyingKey::<MlDsa44>::decode(&enc_vk);
     let kid = kid_of(&key_bytes);
@@ -753,40 +794,16 @@ fn run() -> Result<ExitCode, ()> {
     let datos = match std::fs::read(&args.input) {
         Ok(d) => d,
         Err(e) => {
-            let err = VerifyError::Leer(args.input.display().to_string(), e);
-            let msg = err.to_string();
-            imprimir_report(
-                &error_report(msg.clone()),
-                args.quiet,
-                args.no_expect_signed,
-            );
-            if let Some(p) = &args.json {
-                if let Ok(js) = serde_json::to_string_pretty(&error_report(msg.clone())) {
-                    let _ = std::fs::write(p, js);
-                }
-            }
-            eprintln!("pqav-verify: error: {}", msg);
-            return Ok(ExitCode::from(2));
+            return Ok(salir_con_error(
+                VerifyError::Leer(args.input.display().to_string(), e).to_string(),
+                &args,
+            ))
         }
     };
 
     let recogido = match primera_pasada(&datos, args.anchor_pid) {
         Ok(r) => r,
-        Err(e) => {
-            let msg = e.to_string();
-            imprimir_report(
-                &error_report(e.to_string()),
-                args.quiet,
-                args.no_expect_signed,
-            );
-            if let Some(p) = &args.json {
-                if let Ok(js) = serde_json::to_string_pretty(&error_report(msg.clone())) {
-                    let _ = std::fs::write(p, js);
-                }
-            }
-            eprintln!("pqav-verify: error: {}", e);
-            return Ok(ExitCode::from(2));
-        }
+        Err(e) => return Ok(salir_con_error(e.to_string(), &args)),
     };
 
     let report = segunda_pasada(&recogido, &vk, &kid);
