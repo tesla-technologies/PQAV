@@ -55,7 +55,7 @@ Below is the summary of the test suite (`results/tests.csv`):
 | P10c| Sigs removed (no expect) | SIN_FIRMAR (0) | SIN_FIRMAR (0) | yes |
 | P11 | Different key | RECHAZADO (1), FIRMA_INVALIDA | RECHAZADO (1), FIRMA_INVALIDA | yes |
 | P12 | Corrupt signature | RECHAZADO (1), FIRMA_INVALIDA | RECHAZADO (1), FIRMA_INVALIDA | yes |
-> This test does not pass by design. Processing the signed file with ffmpeg -c copy aborts with an "Application provided invalid, non monotonically increasing dts" error. This occurs because the base PTS of the anchors does not increase strictly monotonically due to the presence of B-frames, leading to a failed conversion.
+> This test does not pass by design. Processing the signed file with ffmpeg -c copy keeps the signature stream but renumbers its PID (0x1FF0 to 0x0102) and drops the PQAV registration descriptor. It then aborts with "non monotonically increasing dts": the PES PTS of each anchor is the lowest PTS in its interval, usually an audio frame that runs ahead of the video, so anchor PTS values are not strictly increasing (anchor 0 carries 133200 and anchor 1 carries 131280). See results/P4_ffmpeg.txt.
 > Verifying the stream with a different public key correctly rejects the file entirely, yielding FIRMA_INVALIDA, NO_FIRMADA, and SIN_FINAL across all intervals.
 *Null substitution:* Yes, it maintains the packet count, with 20 appended packets at the end of the file representing the final anchor.
 ## Measurements
@@ -97,6 +97,7 @@ The MVP uses the format_identifier PQAV (0x50514156) for the registration descri
 - Only H.264 and AAC at 48 kHz, single program.
 - The signature is deterministic to allow reproducible tests. In the actual project design, the device signs with the hedged randomized variant. Both are valid ML-DSA and the verifier cannot distinguish between them.
 - Remultiplexing with ffmpeg -c copy does not discard the signatures PID, but it aborts with a "non monotonically increasing dts" error. This is because the base of each anchor is the lowest PTS of its interval, which is usually an audio frame that goes ahead of the video (e.g., anchor 0 has 133200 and anchor 1 has 131280). This leaves the output file truncated and unreadable.
+The base PTS of each interval travels in the PES header of its anchor, which is not signed. Shifting a whole interval (about 240 ms) together with its anchor is therefore not detected. The project specification moves the base PTS into the signed payload.
 ## Licence
 This project is dual-licensed under the MIT License and the Apache License 2.0. You may choose either license for your purposes. See the LICENSE-MIT and LICENSE-APACHE files for full details. Documentation and data are licensed under CC BY 4.0.
 ---

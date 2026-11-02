@@ -97,7 +97,6 @@ dif(a, b) = ((a − b + 2^32) mod 2^33) − 2^32
 
 Signed result, in 90 kHz ticks, between −2^32 and 2^32 − 1. Examples that must pass in your tests: `dif(5, 2^33 − 5) = 10` and `dif(2^33 − 5, 5) = −10`. The `mod` is always the positive one (in Rust, `rem_euclid`).
 
->The adaptation field stuffing is intentionally not signed.
 
 ## 3. Component map
 
@@ -461,6 +460,7 @@ They go exactly as is into the MVP README and the data sheet (06, section E):
 - The private key is in a file, without any protection.
 - Only H.264 and AAC at 48 kHz, one program.
 - The signature is deterministic so that the tests are reproducible. In the project design, the device signs with the variant with added randomness (*hedged*; the README (What it is not).6 of `docs/03` of the dossier). Both are valid ML-DSA and the verifier does not distinguish one from the other.
+- The base PTS of each interval travels in the PES header of its anchor, which is not signed. Shifting a whole interval (about 240 ms) together with its anchor is therefore not detected. The project specification moves the base PTS into the signed payload.
 
 ---
 
