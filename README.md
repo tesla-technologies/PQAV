@@ -133,5 +133,6 @@ The base PTS of each interval travels in the PES header of its anchor, which is 
 This MVP supports our PQAV proposal to the NLnet Restack Fund. The funded work would add: MS1, a normative specification, trust model, test vectors and a Stateright model of the verifier; MS2, a sans-IO Rust core with swappable ML-DSA backends and fuzzing in CI; MS3, the H.264 profile, a WASM build and an independent TypeScript verifier; MS4, the full MPEG-TS profile and GStreamer elements; MS5, a pilot with BFBS and a public measurement report; MS6, documentation and release 1.0.
 ## Licence
 This project is dual-licensed under the MIT License and the Apache License 2.0. You may choose either license for your purposes. See the LICENSE-MIT and LICENSE-APACHE files for full details. Documentation and data are licensed under CC BY 4.0.
+
 ---
 Copyright © 2026 Tesla Technologies & Software S.L. Licensed under MIT OR Apache-2.0.
