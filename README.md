@@ -87,6 +87,7 @@ Below is the summary of the test suite (`results/tests.csv`):
 | P11 | Different key | RECHAZADO (1), FIRMA_INVALIDA | RECHAZADO (1), FIRMA_INVALIDA | yes |
 | P12 | Corrupt signature | RECHAZADO (1), FIRMA_INVALIDA | RECHAZADO (1), FIRMA_INVALIDA | yes |
 > **P4** This test does not pass by design. Processing the signed file with ffmpeg -c copy keeps the signature stream but renumbers its PID (0x1FF0 to 0x0102) and drops the PQAV registration descriptor. It then aborts with "non monotonically increasing dts": the PES PTS of each anchor is the lowest PTS in its interval, usually an audio frame that runs ahead of the video, so anchor PTS values are not strictly increasing (anchor 0 carries 133200 and anchor 1 carries 131280). See results/P4_ffmpeg.txt.
+
 > **P11** Verifying the stream with a different public key correctly rejects the file entirely, yielding FIRMA_INVALIDA, NO_FIRMADA, and SIN_FINAL across all intervals.
 *Null substitution:* Yes, it maintains the packet count, with 20 appended packets at the end of the file representing the final anchor.
 ## Measurements
@@ -104,6 +105,7 @@ Below is the summary of the test suite (`results/tests.csv`):
 | Verification time per anchor (p50 / p99) | 52 µs / 110 µs |
 | Total verification time (60s file) | 0.11 s |
 | Appended packets at the end | 20 packets |
+
 **Machine specs:** AMD Ryzen 5 7520U with Radeon Graphics (8 threads), 7.4Gi RAM, Linux 6.6.87.2-microsoft-standard-WSL2 (Ubuntu 24.04), rustc 1.99.1 (release build).
 ## Command-line usage
 **Key generation:**
