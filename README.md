@@ -40,9 +40,9 @@ scripts/run_tests.sh
 > `cargo test` also runs **eight automated attacks** on the 10-second sample to ensure the verifier correctly rejects tampered files. Seven of these attacks (such as garbage insertion, anchor duplication, and PTS tampering) are located in `tests/ataques.rs`, and one direct byte-level payload manipulation is tested in `tests/muestra.rs`.
 To execute the attack tests suite:
 ```bash
-cargo test
+cargo test --test ataques
 ```
-**Expected output:** test result: ok. 7 passed; 0 failed; 4 ignored (all 7 attack tests in green).
+**Expected output:** test result: ok. 7 passed; 0 failed; 0 ignored (all 7 attack tests in green).
 ### Running the internal parsing tests
 The core library tests (`tests/entrada.rs`) require a 60-second synthetic TS file that is not included in the repository to save space. If you want to run these tests, you must first generate the file using `ffmpeg`:
 ```bash
