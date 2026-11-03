@@ -36,8 +36,17 @@ Run the main script from the project root:
 ```bash
 scripts/run_tests.sh
 ```
->`cargo test` also runs seven attacks on the 10 s sample (`tests/ataques.rs`).
+> `cargo test` also runs **eight automated attacks** on the 10-second sample to ensure the verifier correctly rejects tampered files. Seven of these attacks (such as garbage insertion, anchor duplication, and PTS tampering) are located in `tests/ataques.rs`, and one direct byte-level payload manipulation is tested in `tests/muestra.rs`.
+### Running the internal parsing tests
+The core library tests (`tests/entrada.rs`) require a 60-second synthetic TS file that is not included in the repository to save space. If you want to run these tests, you must first generate the file using `ffmpeg`:
+```bash
+scripts/make_input.sh 60 testdata/entrada.ts
+```
 It takes about 10 minutes. The results are saved in `results/tests.csv` and backed up with timestamps in `results/runs/`.
+Once the file is generated, you can run the explicitly ignored tests:
+```bash
+cargo test -- --ignored
+```
 ## Results
 Below is the summary of the test suite (`results/tests.csv`):
 | ID | Description | Expected | Obtained | Pass? |
