@@ -318,7 +318,7 @@ mod tests {
 
     #[test]
     fn m2_pes_de_ejemplo() {
-	// cabecera PES del primer frame (ver FORMATO.md) seguida de una AUD
+        // cabecera PES del primer frame (ver FORMATO.md) seguida de una AUD
         let mut datos = vec![
             0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0xC0, 0x0A, 0x31, 0x00, 0x07, 0xD8, 0x61,
             0x11, 0x00, 0x07, 0xA0, 0x21,
