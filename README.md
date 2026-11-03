@@ -1,4 +1,5 @@
 # PQAV: component-level post-quantum signing for MPEG-TS (MVP)
+![CI](https://github.com/tesla-technologies/PQAV/actions/workflows/ci.yml/badge.svg)
 ## What this is
 This MVP provides three command-line tools to authenticate MPEG-TS files with post-quantum cryptography. 
 - `pqav-keygen` generates an ML-DSA-44 key pair in two files. 
@@ -37,6 +38,11 @@ Run the main script from the project root:
 scripts/run_tests.sh
 ```
 > `cargo test` also runs **eight automated attacks** on the 10-second sample to ensure the verifier correctly rejects tampered files. Seven of these attacks (such as garbage insertion, anchor duplication, and PTS tampering) are located in `tests/ataques.rs`, and one direct byte-level payload manipulation is tested in `tests/muestra.rs`.
+To execute the attack tests suite:
+```bash
+cargo test
+```
+**Expected output:** test result: ok. 7 passed; 0 failed; 4 ignored (all 7 attack tests in green).
 ### Running the internal parsing tests
 The core library tests (`tests/entrada.rs`) require a 60-second synthetic TS file that is not included in the repository to save space. If you want to run these tests, you must first generate the file using `ffmpeg`:
 ```bash
@@ -80,8 +86,8 @@ Below is the summary of the test suite (`results/tests.csv`):
 | P10c| Sigs removed (no expect) | SIN_FIRMAR (0) | SIN_FIRMAR (0) | yes |
 | P11 | Different key | RECHAZADO (1), FIRMA_INVALIDA | RECHAZADO (1), FIRMA_INVALIDA | yes |
 | P12 | Corrupt signature | RECHAZADO (1), FIRMA_INVALIDA | RECHAZADO (1), FIRMA_INVALIDA | yes |
-> This test does not pass by design. Processing the signed file with ffmpeg -c copy keeps the signature stream but renumbers its PID (0x1FF0 to 0x0102) and drops the PQAV registration descriptor. It then aborts with "non monotonically increasing dts": the PES PTS of each anchor is the lowest PTS in its interval, usually an audio frame that runs ahead of the video, so anchor PTS values are not strictly increasing (anchor 0 carries 133200 and anchor 1 carries 131280). See results/P4_ffmpeg.txt.
-> Verifying the stream with a different public key correctly rejects the file entirely, yielding FIRMA_INVALIDA, NO_FIRMADA, and SIN_FINAL across all intervals.
+> **P4** This test does not pass by design. Processing the signed file with ffmpeg -c copy keeps the signature stream but renumbers its PID (0x1FF0 to 0x0102) and drops the PQAV registration descriptor. It then aborts with "non monotonically increasing dts": the PES PTS of each anchor is the lowest PTS in its interval, usually an audio frame that runs ahead of the video, so anchor PTS values are not strictly increasing (anchor 0 carries 133200 and anchor 1 carries 131280). See results/P4_ffmpeg.txt.
+> **P11** Verifying the stream with a different public key correctly rejects the file entirely, yielding FIRMA_INVALIDA, NO_FIRMADA, and SIN_FINAL across all intervals.
 *Null substitution:* Yes, it maintains the packet count, with 20 appended packets at the end of the file representing the final anchor.
 ## Measurements
 | Metric | Value | 
@@ -123,6 +129,8 @@ The MVP uses the format_identifier PQAV (0x50514156) for the registration descri
 - The signature is deterministic to allow reproducible tests. In the actual project design, the device signs with the hedged randomized variant. Both are valid ML-DSA and the verifier cannot distinguish between them.
 - Remultiplexing with ffmpeg -c copy does not discard the signatures PID, but it aborts with a "non monotonically increasing dts" error. This is because the base of each anchor is the lowest PTS of its interval, which is usually an audio frame that goes ahead of the video (e.g., anchor 0 has 133200 and anchor 1 has 131280). This leaves the output file truncated and unreadable.
 The base PTS of each interval travels in the PES header of its anchor, which is not signed. Shifting a whole interval (about 240 ms) together with its anchor is therefore not detected. The project specification moves the base PTS into the signed payload.
+## Relation to the NLnet proposal
+This MVP supports our PQAV proposal to the NLnet Restack Fund. The funded work would add: MS1, a normative specification, trust model, test vectors and a Stateright model of the verifier; MS2, a sans-IO Rust core with swappable ML-DSA backends and fuzzing in CI; MS3, the H.264 profile, a WASM build and an independent TypeScript verifier; MS4, the full MPEG-TS profile and GStreamer elements; MS5, a pilot with BFBS and a public measurement report; MS6, documentation and release 1.0.
 ## Licence
 This project is dual-licensed under the MIT License and the Apache License 2.0. You may choose either license for your purposes. See the LICENSE-MIT and LICENSE-APACHE files for full details. Documentation and data are licensed under CC BY 4.0.
 ---
