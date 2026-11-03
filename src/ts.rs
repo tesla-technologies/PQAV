@@ -257,7 +257,7 @@ pub fn parse_pmt(section: &[u8]) -> Result<Pmt, TsError> {
 mod tests {
     use super::*;
 
-    // PAT y PMT del fichero de prueba (documento 01, apartados 3.2 y 3.3)
+    // PAT y PMT del fichero de prueba (ver FORMATO.md)
     const PAT: [u8; 16] = [
         0x00, 0xB0, 0x0D, 0x00, 0x01, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xF0, 0x00, 0x2A, 0xB1, 0x04,
         0xB2,
@@ -318,7 +318,7 @@ mod tests {
 
     #[test]
     fn m2_pes_de_ejemplo() {
-        // cabecera PES del primer frame (documento 01, apartado 4.4) seguida de una AUD
+	// cabecera PES del primer frame (ver FORMATO.md) seguida de una AUD
         let mut datos = vec![
             0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0xC0, 0x0A, 0x31, 0x00, 0x07, 0xD8, 0x61,
             0x11, 0x00, 0x07, 0xA0, 0x21,
