@@ -48,6 +48,22 @@ Once the file is generated, you can run the explicitly ignored tests:
 cargo test -- --ignored
 ```
 ## Results
+The verifier outputs its verdicts in Spanish. Here is the translation legend:
+
+| Spanish Verdict | English Meaning |
+|---|---|
+| `AUTENTICO` | Authentic |
+| `RECHAZADO` | Rejected |
+| `MANIPULADO` | Tampered |
+| `EMPALME` | Splice |
+| `HUECO` | Gap |
+| `SIN_FIRMAR` | Unsigned |
+| `MAPA_ALTERADO` | Altered Map |
+| `FIRMA_INVALIDA` | Invalid Signature |
+| `NO_FIRMADA` | Not Signed (unit) |
+| `SIN_FINAL` | Missing Final Anchor |
+| `INCOMPLETO` | Incomplete |
+
 Below is the summary of the test suite (`results/tests.csv`):
 | ID | Description | Expected | Obtained | Pass? |
 | --- | --- | --- | --- | --- |
